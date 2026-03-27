@@ -55,6 +55,12 @@ Reject when any of the following are true:
 - unsupported query parameters present
 - response expected to be non-HTML
 
+Cookie policy:
+
+- bypass only on cookies that alter the server-rendered document
+- do not bypass on client-side consent cookies such as `yootheme_consent`
+- banner visibility should be handled by front-end JavaScript on top of the same cached HTML
+
 3. Cache key model
 Build a deterministic path instead of a Joomla hash:
 

@@ -22,6 +22,7 @@ final class SnippetBuilder
     {
         $cacheRoot = rtrim((string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache'), '/');
         $cookies = self::buildCookieRegex($params);
+        $hostCondition = self::buildHostCondition($params);
         $cookieLine = $cookies !== ''
             ? '    RewriteCond %{HTTP_COOKIE} !(^|;\\s*)(' . $cookies . ')(=|;|$) [NC]'
             : '';
@@ -31,7 +32,9 @@ final class SnippetBuilder
     RewriteEngine On
 
     # MAx Cache for Joomla preview snippet
+    # Keep canonical host redirects ahead of this block.
     # Adapt paths to your vhost layout before enabling.
+{$hostCondition}
     RewriteCond %{REQUEST_METHOD} =GET
     RewriteCond %{REQUEST_URI} !^/administrator/
     RewriteCond %{QUERY_STRING} ^$
@@ -90,6 +93,22 @@ HTACCESS);
         }
 
         return implode('|', $patterns);
+    }
+
+    private static function buildHostCondition(array $params): string
+    {
+        $hosts = self::normalizeLineList((string) ($params['site_hosts'] ?? ''));
+
+        if ($hosts === []) {
+            return '';
+        }
+
+        $pattern = implode('|', array_map(
+            static fn (string $host): string => preg_quote($host, '#'),
+            $hosts
+        ));
+
+        return '    RewriteCond %{HTTP_HOST} ^(?:' . $pattern . ')$ [NC]';
     }
 
     private static function normalizeLineList(string $value): array

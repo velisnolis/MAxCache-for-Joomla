@@ -74,3 +74,17 @@ Each apply action should:
 - create a timestamped backup
 - mark the applied hash
 - warn when Akeeba Admin Tools markers are detected
+
+## Cookie Guidance
+
+`bypass_cookies` should only contain cookies that change the server-rendered HTML.
+
+Typical examples:
+
+- Joomla session or login cookies
+- remember-me cookies
+- anti-bot or edge challenge cookies when they materially change delivery
+
+Do not include client-side consent cookies such as `yootheme_consent`.
+That cookie should not split or bypass full-page cache, because it only controls banner
+visibility in the browser through JavaScript.

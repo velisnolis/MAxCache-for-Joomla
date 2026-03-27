@@ -13,7 +13,6 @@ use Joomla\CMS\Event\Application\AfterRouteEvent;
 use Joomla\CMS\Event\Model\AfterSaveEvent;
 use Joomla\CMS\Event\PageCache\GetKeyEvent;
 use Joomla\CMS\Event\PageCache\IsExcludedEvent;
-use Joomla\CMS\Filesystem\File;
 use Joomla\CMS\Filesystem\Folder;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
@@ -146,13 +145,13 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        File::write($this->targetPath, $body);
+        @file_put_contents($this->targetPath, $body);
 
         if ($this->gzipPath !== null) {
             $gzip = gzencode($body, 6);
 
             if ($gzip !== false) {
-                File::write($this->gzipPath, $gzip);
+                @file_put_contents($this->gzipPath, $gzip);
             }
         }
 
@@ -219,6 +218,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
             [
                 'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
+                'site_hosts' => $this->params->get('site_hosts', ''),
                 'exclude' => $this->params->get('exclude', ''),
                 'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                 'allowed_query_params' => $this->params->get('allowed_query_params', ''),
