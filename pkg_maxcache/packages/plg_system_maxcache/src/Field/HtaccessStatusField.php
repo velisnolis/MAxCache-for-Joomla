@@ -8,6 +8,7 @@
 namespace Vendor\Plugin\System\Maxcache\Field;
 
 use Joomla\CMS\Form\FormField;
+use Joomla\CMS\Factory;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
@@ -61,6 +62,14 @@ final class HtaccessStatusField extends FormField
         }
 
         $html[] = '<p><strong>Expected hash:</strong> <code>' . htmlspecialchars($status['expected_hash'], ENT_QUOTES, 'UTF-8') . '</code></p>';
+
+        $lastApply = Factory::getApplication()->getUserState('plg_system_maxcache.last_apply_result');
+
+        if (is_array($lastApply) && !empty($lastApply['message'])) {
+            $html[] = '<hr>';
+            $html[] = '<p><strong>Last apply result:</strong> ' . htmlspecialchars((string) $lastApply['message'], ENT_QUOTES, 'UTF-8') . '</p>';
+        }
+
         $html[] = '<p>This action remains explicit. Saving the plugin never rewrites server config automatically.</p>';
         $html[] = '</div>';
 

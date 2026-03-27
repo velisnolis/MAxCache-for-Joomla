@@ -287,7 +287,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             [
                 'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
                 'site_hosts' => $this->params->get('site_hosts', ''),
-                'exclude' => $this->params->get('exclude', ''),
+                'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
+                    $this->normalizeLineList((string) $this->params->get('exclude', ''))
+                )),
                 'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                 'allowed_query_params' => $this->params->get('allowed_query_params', ''),
             ]
@@ -315,6 +317,11 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             $message .= ' Backup created at ' . $result['backup_path'] . '.';
         }
 
+        $app->setUserState('plg_system_maxcache.last_apply_result', [
+            'message' => $message,
+            'type' => 'success',
+            'time' => time(),
+        ]);
         $app->enqueueMessage($message, 'message');
         $app->redirect(Route::_('index.php?option=com_plugins&task=plugin.edit&extension_id=' . $input->getInt('extension_id'), false));
         $app->close();
@@ -368,7 +375,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     {
         $exclusions = array_values(array_unique(array_merge(
             BuiltInExclusions::getRuntimePatterns(),
-            $this->normalizeLineList((string) $this->params->get('exclude', ''))
+            BuiltInExclusions::filterCustomPatterns(
+                $this->normalizeLineList((string) $this->params->get('exclude', ''))
+            )
         )));
 
         $externalUrl = Uri::getInstance()->toString();

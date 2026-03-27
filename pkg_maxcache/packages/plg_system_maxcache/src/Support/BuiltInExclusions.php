@@ -44,4 +44,15 @@ final class BuiltInExclusions
             'tmpl=component',
         ];
     }
+
+    public static function filterCustomPatterns(array $patterns): array
+    {
+        $builtIns = array_merge(self::getRuntimePatterns(), self::getSnippetPatterns(), self::getLabels());
+        $builtIns = array_map('trim', $builtIns);
+
+        return array_values(array_filter(
+            array_map('trim', $patterns),
+            static fn (string $pattern): bool => $pattern !== '' && !in_array($pattern, $builtIns, true)
+        ));
+    }
 }

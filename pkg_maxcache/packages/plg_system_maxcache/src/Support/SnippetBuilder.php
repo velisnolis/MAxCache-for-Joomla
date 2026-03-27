@@ -128,7 +128,9 @@ HTACCESS);
     {
         $patterns = array_values(array_unique(array_merge(
             BuiltInExclusions::getSnippetPatterns(),
-            self::normalizeLineList((string) ($params['exclude'] ?? ''))
+            BuiltInExclusions::filterCustomPatterns(
+                self::normalizeLineList((string) ($params['exclude'] ?? ''))
+            )
         )));
 
         return implode('|', $patterns);
