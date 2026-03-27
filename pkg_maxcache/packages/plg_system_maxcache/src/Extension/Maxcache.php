@@ -30,6 +30,7 @@ use Joomla\Event\SubscriberInterface;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
+use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 \defined('_JEXEC') or die;
@@ -126,6 +127,10 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
     public function onAfterRender(AfterRenderEvent $event): void
     {
+        if ($this->shouldRenderAdminPurgeButton()) {
+            $this->injectAdminPurgeButton();
+        }
+
         if (!$this->eligible) {
             return;
         }
@@ -272,14 +277,33 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         if (
             !$app->isClient('administrator')
-            || $input->getCmd('option') !== 'com_plugins'
-            || $input->getCmd('maxcache_action') !== 'apply_snippet'
+            || !\in_array($input->getCmd('maxcache_action'), ['apply_snippet', 'purge_cache'], true)
         ) {
             return false;
         }
 
         if (!Session::checkToken()) {
             throw new \RuntimeException(Text::_('JINVALID_TOKEN'));
+        }
+
+        if ($input->getCmd('maxcache_action') === 'purge_cache') {
+            $this->purgeAll();
+
+            $message = 'MAx Cache static cache was fully purged.';
+            $app->setUserState('plg_system_maxcache.last_purge_result', [
+                'message' => $message,
+                'type' => 'success',
+                'time' => time(),
+            ]);
+            $app->enqueueMessage($message, 'message');
+            $app->redirect($this->getAdminReturnUrl());
+            $app->close();
+
+            return true;
+        }
+
+        if ($input->getCmd('option') !== 'com_plugins') {
+            return false;
         }
 
         $snippet = SnippetBuilder::build(
@@ -327,6 +351,95 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $app->close();
 
         return true;
+    }
+
+    private function shouldRenderAdminPurgeButton(): bool
+    {
+        $app = $this->getApplication();
+
+        if (!$app->isClient('administrator')) {
+            return false;
+        }
+
+        $body = (string) $app->getBody();
+
+        if ($body === '' || stripos($body, '</body>') === false) {
+            return false;
+        }
+
+        $detector = RegularLabsCacheCleanerDetector::detect(
+            (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache')
+        );
+
+        if (($detector['state'] ?? 'unknown') === 'active') {
+            return false;
+        }
+
+        $snippet = $this->buildCurrentSnippet();
+        $status = AdminToolsManager::isAvailable()
+            ? AdminToolsManager::getStatus($snippet)
+            : HtaccessManager::getStatus($snippet);
+
+        return \in_array($status['state'] ?? 'not_applied', ['applied', 'outdated'], true);
+    }
+
+    private function injectAdminPurgeButton(): void
+    {
+        $app = $this->getApplication();
+        $body = (string) $app->getBody();
+
+        if (stripos($body, 'data-maxcache-purge-fallback') !== false) {
+            return;
+        }
+
+        $token = Session::getFormToken();
+        $action = Route::_('index.php', false);
+        $confirm = htmlspecialchars(
+            'Purge all MAx Cache static files now? This will remove the entire static cache directory and the next public requests will rebuild it.',
+            ENT_QUOTES,
+            'UTF-8'
+        );
+
+        $markup = <<<HTML
+<div data-maxcache-purge-fallback style="position:fixed;right:18px;bottom:18px;z-index:1080;">
+  <form method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="margin:0;">
+    <input type="hidden" name="maxcache_action" value="purge_cache">
+    <input type="hidden" name="{$token}" value="1">
+    <button type="submit" class="btn btn-danger">
+      Purge MAx Cache
+    </button>
+  </form>
+</div>
+HTML;
+
+        $app->setBody((string) preg_replace('#</body>#i', $markup . "\n</body>", $body, 1));
+    }
+
+    private function buildCurrentSnippet(): string
+    {
+        return SnippetBuilder::build(
+            (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
+            [
+                'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
+                'site_hosts' => $this->params->get('site_hosts', ''),
+                'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
+                    $this->normalizeLineList((string) $this->params->get('exclude', ''))
+                )),
+                'bypass_cookies' => $this->params->get('bypass_cookies', ''),
+                'allowed_query_params' => $this->params->get('allowed_query_params', ''),
+            ]
+        );
+    }
+
+    private function getAdminReturnUrl(): string
+    {
+        $referer = (string) $this->getApplication()->getInput()->server->getString('HTTP_REFERER', '');
+
+        if ($referer !== '') {
+            return $referer;
+        }
+
+        return Route::_('index.php', false);
     }
 
     private function appStateSupportsCaching(): bool

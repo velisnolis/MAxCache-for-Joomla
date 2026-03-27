@@ -70,6 +70,12 @@ final class HtaccessStatusField extends FormField
             $html[] = '<p><strong>Last apply result:</strong> ' . htmlspecialchars((string) $lastApply['message'], ENT_QUOTES, 'UTF-8') . '</p>';
         }
 
+        $lastPurge = Factory::getApplication()->getUserState('plg_system_maxcache.last_purge_result');
+
+        if (is_array($lastPurge) && !empty($lastPurge['message'])) {
+            $html[] = '<p><strong>Last purge result:</strong> ' . htmlspecialchars((string) $lastPurge['message'], ENT_QUOTES, 'UTF-8') . '</p>';
+        }
+
         $html[] = '<p>This action remains explicit. Saving the plugin never rewrites server config automatically.</p>';
         $html[] = '</div>';
 
