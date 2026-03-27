@@ -63,6 +63,7 @@ final class HtaccessStatusField extends FormField
     {
         return match ($status['state'] ?? 'unknown') {
             'detected' => 'Detected on this server. CloudLinux mod_maxcache is the recommended snippet mode.',
+            'configured' => 'Configured on this server, but Joomla could not verify the loaded Apache modules directly. CloudLinux mod_maxcache is likely available.',
             'not_detected' => 'Not detected from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
             default => 'Could not be verified from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
         };
