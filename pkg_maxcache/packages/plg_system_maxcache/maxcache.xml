@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.7</version>
+	<version>0.1.8</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -107,6 +107,7 @@
 					description="PLG_SYSTEM_MAXCACHE_FIELD_EXCLUDE_DESC"
 					rows="12"
 					filter="raw"
+					default="/component/ajax(?:/.*|$)&#10;(?:^|[?&])option=com_ajax(?:[=&]|$)&#10;(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)&#10;(?:^|[?&])tmpl=component(?:[=&]|$)"
 				/>
 
 				<field

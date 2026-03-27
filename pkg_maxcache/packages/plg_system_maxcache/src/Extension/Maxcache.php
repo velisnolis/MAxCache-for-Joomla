@@ -101,6 +101,11 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
+        if ($this->hasReservedBypassQuery()) {
+            $this->markRejected('reserved-query');
+            return;
+        }
+
         if (!$this->hasAllowedQueryParameters()) {
             $this->markRejected('query-params');
             return;
@@ -360,11 +365,10 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
     private function isExcludedUrl(): bool
     {
-        $exclusions = $this->normalizeLineList((string) $this->params->get('exclude', ''));
-
-        if ($exclusions === []) {
-            return false;
-        }
+        $exclusions = array_values(array_unique(array_merge(
+            $this->getBuiltInExclusions(),
+            $this->normalizeLineList((string) $this->params->get('exclude', ''))
+        )));
 
         $externalUrl = Uri::getInstance()->toString();
         $internalUrl = '/index.php';
@@ -380,6 +384,18 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         return false;
+    }
+
+    private function getBuiltInExclusions(): array
+    {
+        return [
+            '/administrator(?:/.*|$)',
+            '/api(?:/.*|$)',
+            '/component/ajax(?:/.*|$)',
+            '(?:^|[?&])option=com_ajax(?:[=&]|$)',
+            '(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)',
+            '(?:^|[?&])tmpl=component(?:[=&]|$)',
+        ];
     }
 
     private function hasBypassCookie(): bool
@@ -422,6 +438,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         return true;
+    }
+
+    private function hasReservedBypassQuery(): bool
+    {
+        $query = Uri::getInstance()->getQuery(true);
+
+        if ($query === []) {
+            return false;
+        }
+
+        return strtolower((string) ($query['p'] ?? '')) === 'customizer';
     }
 
     private function buildTargetPath(): ?string
