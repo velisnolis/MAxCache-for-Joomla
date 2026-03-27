@@ -388,7 +388,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $app = $this->getApplication();
         $body = (string) $app->getBody();
 
-        if (stripos($body, 'data-maxcache-purge-fallback') !== false) {
+        if (stripos($body, 'data-maxcache-purge-action') !== false) {
             return;
         }
 
@@ -400,8 +400,23 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             'UTF-8'
         );
 
-        $markup = <<<HTML
-<div data-maxcache-purge-fallback style="position:fixed;right:18px;bottom:18px;z-index:1080;">
+        $headerMarkup = <<<HTML
+<div class="header-item" data-maxcache-purge-action>
+  <a href="javascript:" onclick="return document.getElementById('maxcache-purge-form')?.requestSubmit();" class="header-item-content" title="Purge MAx Cache">
+    <div class="header-item-icon">
+      <span class="icon-trash" aria-hidden="true"></span>
+    </div>
+    <div class="header-item-text">Purge MAx Cache</div>
+  </a>
+  <form id="maxcache-purge-form" method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="display:none;">
+    <input type="hidden" name="maxcache_action" value="purge_cache">
+    <input type="hidden" name="{$token}" value="1">
+  </form>
+</div>
+HTML;
+
+        $floatingMarkup = <<<HTML
+<div data-maxcache-purge-action style="position:fixed;right:18px;bottom:18px;z-index:1080;">
   <form method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="margin:0;">
     <input type="hidden" name="maxcache_action" value="purge_cache">
     <input type="hidden" name="{$token}" value="1">
@@ -412,7 +427,21 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 </div>
 HTML;
 
-        $app->setBody((string) preg_replace('#</body>#i', $markup . "\n</body>", $body, 1));
+        $updated = preg_replace(
+            '#<div class="header-items d-flex ms-auto">#i',
+            '$0' . "\n" . $headerMarkup,
+            $body,
+            1,
+            $headerMatches
+        );
+
+        if (($headerMatches ?? 0) > 0) {
+            $app->setBody((string) $updated);
+
+            return;
+        }
+
+        $app->setBody((string) preg_replace('#</body>#i', $floatingMarkup . "\n</body>", $body, 1));
     }
 
     private function buildCurrentSnippet(): string
