@@ -8,8 +8,6 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Date\Date;
-use Joomla\CMS\Filesystem\File;
-
 \defined('_JEXEC') or die;
 
 final class HtaccessManager
@@ -125,7 +123,9 @@ final class HtaccessManager
 
         if ($current !== '') {
             $backupPath = self::buildBackupPath();
-            File::copy($path, $backupPath);
+            if (!@copy($path, $backupPath)) {
+                throw new \RuntimeException('Could not create .htaccess backup at ' . $backupPath . '.');
+            }
         }
 
         $existingBlock = self::getManagedBlock($current);
@@ -138,7 +138,17 @@ final class HtaccessManager
             $updated = rtrim($current) . "\n\n" . $managedBlock . "\n";
         }
 
-        File::write($path, $updated);
+        $bytes = @file_put_contents($path, $updated);
+
+        if ($bytes === false) {
+            throw new \RuntimeException('Could not write the managed MAx Cache block to ' . $path . '. Check file ownership and permissions.');
+        }
+
+        $written = self::readCurrentContents();
+
+        if (self::getManagedHash((string) self::getManagedBlock($written)) !== self::buildHash($snippet)) {
+            throw new \RuntimeException('The managed MAx Cache block could not be verified after writing ' . $path . '.');
+        }
 
         return [
             'path' => $path,
@@ -161,10 +171,16 @@ final class HtaccessManager
 
         if ($current !== '') {
             $backupPath = self::buildBackupPath();
-            File::copy($path, $backupPath);
+            if (!@copy($path, $backupPath)) {
+                throw new \RuntimeException('Could not create .htaccess backup at ' . $backupPath . '.');
+            }
         }
 
-        File::write($path, $updated);
+        $bytes = @file_put_contents($path, $updated);
+
+        if ($bytes === false) {
+            throw new \RuntimeException('Could not remove the managed MAx Cache block from ' . $path . '. Check file ownership and permissions.');
+        }
 
         return $backupPath;
     }

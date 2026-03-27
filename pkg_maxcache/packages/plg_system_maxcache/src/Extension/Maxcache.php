@@ -306,47 +306,58 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return false;
         }
 
-        $snippet = SnippetBuilder::build(
-            (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
-            [
-                'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
-                'site_hosts' => $this->params->get('site_hosts', ''),
-                'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
-                    $this->normalizeLineList((string) $this->params->get('exclude', ''))
-                )),
-                'bypass_cookies' => $this->params->get('bypass_cookies', ''),
-                'allowed_query_params' => $this->params->get('allowed_query_params', ''),
-            ]
-        );
+        try {
+            $snippet = SnippetBuilder::build(
+                (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
+                [
+                    'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
+                    'site_hosts' => $this->params->get('site_hosts', ''),
+                    'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
+                        $this->normalizeLineList((string) $this->params->get('exclude', ''))
+                    )),
+                    'bypass_cookies' => $this->params->get('bypass_cookies', ''),
+                    'allowed_query_params' => $this->params->get('allowed_query_params', ''),
+                ]
+            );
 
-        if (AdminToolsManager::isAvailable()) {
-            $result = AdminToolsManager::applySnippet($snippet);
-            $message = 'MAx Cache snippet applied to the Admin Tools custom .htaccess footer and .htaccess was rebuilt.';
+            if (AdminToolsManager::isAvailable()) {
+                $result = AdminToolsManager::applySnippet($snippet);
+                $message = 'MAx Cache snippet applied to the Admin Tools custom .htaccess footer and .htaccess was rebuilt.';
 
-            if (!empty($result['footer_backup_path'])) {
-                $message .= ' Footer backup created at ' . $result['footer_backup_path'] . '.';
+                if (!empty($result['footer_backup_path'])) {
+                    $message .= ' Footer backup created at ' . $result['footer_backup_path'] . '.';
+                }
+            } else {
+                $status = HtaccessManager::getStatus($snippet);
+
+                if ($status['akeeba_detected']) {
+                    $app->enqueueMessage('Akeeba Admin Tools markers were detected in .htaccess. Review rule ordering carefully after applying the managed MAx Cache block.', 'warning');
+                }
+
+                $result = HtaccessManager::applySnippet($snippet);
+                $message = 'MAx Cache snippet applied to .htaccess.';
             }
-        } else {
-            $status = HtaccessManager::getStatus($snippet);
 
-            if ($status['akeeba_detected']) {
-                $app->enqueueMessage('Akeeba Admin Tools markers were detected in .htaccess. Review rule ordering carefully after applying the managed MAx Cache block.', 'warning');
+            if (!empty($result['backup_path'])) {
+                $message .= ' Backup created at ' . $result['backup_path'] . '.';
             }
 
-            $result = HtaccessManager::applySnippet($snippet);
-            $message = 'MAx Cache snippet applied to .htaccess.';
+            $app->setUserState('plg_system_maxcache.last_apply_result', [
+                'message' => $message,
+                'type' => 'success',
+                'time' => time(),
+            ]);
+            $app->enqueueMessage($message, 'message');
+        } catch (\Throwable $exception) {
+            $message = 'Could not apply the MAx Cache snippet: ' . $exception->getMessage();
+            $app->setUserState('plg_system_maxcache.last_apply_result', [
+                'message' => $message,
+                'type' => 'error',
+                'time' => time(),
+            ]);
+            $app->enqueueMessage($message, 'error');
         }
 
-        if ($result['backup_path']) {
-            $message .= ' Backup created at ' . $result['backup_path'] . '.';
-        }
-
-        $app->setUserState('plg_system_maxcache.last_apply_result', [
-            'message' => $message,
-            'type' => 'success',
-            'time' => time(),
-        ]);
-        $app->enqueueMessage($message, 'message');
         $app->redirect(Route::_('index.php?option=com_plugins&task=plugin.edit&extension_id=' . $input->getInt('extension_id'), false));
         $app->close();
 
