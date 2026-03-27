@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.16</version>
+	<version>0.1.17</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -131,7 +131,7 @@
 					description="PLG_SYSTEM_MAXCACHE_FIELD_BYPASS_COOKIES_DESC"
 					rows="6"
 					filter="raw"
-					default="joomla_user_state\njoomla_remember_me\ncf_clearance"
+					default="joomla_user_state&#10;joomla_remember_me&#10;cf_clearance"
 				/>
 
 				<field

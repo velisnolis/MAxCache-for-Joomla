@@ -66,21 +66,46 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
                 $params = [];
             }
 
-            if (!$this->shouldApplyDetectedDefaults($type, $plugin, $params)) {
-                return;
+            $shouldSave = $this->normalizeEscapedTextareaDefaults($params);
+
+            if ($this->shouldApplyDetectedDefaults($type, $plugin, $params)) {
+                $detected = $this->detectLanguageRoutingProfile($db);
+                $params['path_mode'] = $detected['recommended_path_mode'];
+                $params['vary_language'] = $detected['recommended_vary_language'];
+                $params['autodetected_language_routing'] = $detected['state'];
+                $params['server_snippet_mode'] = $this->detectModMaxcacheAvailability() ? 'mod_maxcache' : 'apache';
+                $shouldSave = true;
             }
 
-            $detected = $this->detectLanguageRoutingProfile($db);
-            $params['path_mode'] = $detected['recommended_path_mode'];
-            $params['vary_language'] = $detected['recommended_vary_language'];
-            $params['autodetected_language_routing'] = $detected['state'];
-            $params['server_snippet_mode'] = $this->detectModMaxcacheAvailability() ? 'mod_maxcache' : 'apache';
+            if (!$shouldSave) {
+                return;
+            }
 
             $plugin->params = json_encode($params, JSON_UNESCAPED_SLASHES);
             $db->updateObject('#__extensions', $plugin, 'extension_id');
         } catch (\Throwable $exception) {
             // Keep installation resilient if defaults could not be inferred.
         }
+    }
+
+    private function normalizeEscapedTextareaDefaults(array &$params): bool
+    {
+        $changed = false;
+
+        foreach (['bypass_cookies', 'site_hosts', 'allowed_query_params', 'exclude'] as $key) {
+            if (!isset($params[$key]) || !\is_string($params[$key])) {
+                continue;
+            }
+
+            if (!str_contains($params[$key], '\n')) {
+                continue;
+            }
+
+            $params[$key] = str_replace('\n', "\n", $params[$key]);
+            $changed = true;
+        }
+
+        return $changed;
     }
 
     private function shouldApplyDetectedDefaults(string $type, object $plugin, array $params): bool
