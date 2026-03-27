@@ -61,6 +61,8 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
     public function onAfterRoute(AfterRouteEvent $event): void
     {
+        $this->warnIfPluginOrderingIsNotLast();
+
         if ($this->handleAdminHtaccessAction()) {
             return;
         }
@@ -156,6 +158,65 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         $this->emitDebugHeaders('stored');
+    }
+
+    private function warnIfPluginOrderingIsNotLast(): void
+    {
+        $app = $this->getApplication();
+        $input = $app->getInput();
+
+        if (
+            !$app->isClient('administrator')
+            || $input->getCmd('option') !== 'com_plugins'
+            || !\in_array($input->getCmd('view'), ['plugin', 'plugins'], true)
+            || $input->getInt('extension_id') <= 0
+        ) {
+            return;
+        }
+
+        if ($input->getInt('extension_id') !== (int) ($this->_subject->id ?? 0)) {
+            return;
+        }
+
+        try {
+            /** @var DatabaseInterface $db */
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
+            $query = $db->getQuery(true)
+                ->select($db->quoteName('extension_id'))
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+                ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
+                ->where($db->quoteName('element') . ' = ' . $db->quote('maxcache'));
+
+            $db->setQuery($query);
+            $maxcacheExtensionId = (int) $db->loadResult();
+
+            if ($maxcacheExtensionId <= 0 || $input->getInt('extension_id') !== $maxcacheExtensionId) {
+                return;
+            }
+
+            $query = $db->getQuery(true)
+                ->select([$db->quoteName('extension_id'), $db->quoteName('name'), $db->quoteName('ordering')])
+                ->from($db->quoteName('#__extensions'))
+                ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+                ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
+                ->where($db->quoteName('enabled') . ' = 1')
+                ->order($db->quoteName('ordering') . ' DESC, ' . $db->quoteName('extension_id') . ' DESC');
+
+            $db->setQuery($query, 0, 1);
+            $last = $db->loadObject();
+
+            if (!$last || (int) $last->extension_id === $maxcacheExtensionId) {
+                return;
+            }
+
+            $app->enqueueMessage(
+                'MAx Cache should usually be the last enabled system plugin. Set Ordering to - Last - so it sees the final response before writing static output.',
+                'warning'
+            );
+        } catch (\Throwable $exception) {
+            // Ignore admin hint failures.
+        }
     }
 
     public function onContentAfterSave(AfterSaveEvent $event): void

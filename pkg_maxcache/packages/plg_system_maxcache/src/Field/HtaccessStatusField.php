@@ -7,8 +7,9 @@
 
 namespace Vendor\Plugin\System\Maxcache\Field;
 
-use Joomla\CMS\Form\Field\FormField;
+use Joomla\CMS\Form\FormField;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
+use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 \defined('_JEXEC') or die;
@@ -22,6 +23,7 @@ final class HtaccessStatusField extends FormField
         $mode = (string) $this->form->getValue('server_snippet_mode', 'params', 'mod_maxcache');
         $params = [
             'cache_root' => $this->form->getValue('cache_root', 'params'),
+            'site_hosts' => $this->form->getValue('site_hosts', 'params'),
             'exclude' => $this->form->getValue('exclude', 'params'),
             'bypass_cookies' => $this->form->getValue('bypass_cookies', 'params'),
             'allowed_query_params' => $this->form->getValue('allowed_query_params', 'params'),
@@ -29,6 +31,7 @@ final class HtaccessStatusField extends FormField
 
         $snippet = SnippetBuilder::build($mode, $params);
         $status = HtaccessManager::getStatus($snippet);
+        $modMaxcache = ServerCapabilityDetector::detectModMaxcache();
 
         $stateLabel = match ($status['state']) {
             'applied' => 'Applied',
@@ -38,6 +41,7 @@ final class HtaccessStatusField extends FormField
 
         $html = [];
         $html[] = '<div class="alert alert-info">';
+        $html[] = '<p><strong>mod_maxcache:</strong> ' . htmlspecialchars($this->buildModMaxcacheMessage($modMaxcache), ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>.htaccess status:</strong> ' . htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') . '</p>';
 
         if ($status['akeeba_detected']) {
@@ -53,5 +57,14 @@ final class HtaccessStatusField extends FormField
         $html[] = '</div>';
 
         return implode('', $html);
+    }
+
+    private function buildModMaxcacheMessage(array $status): string
+    {
+        return match ($status['state'] ?? 'unknown') {
+            'detected' => 'Detected on this server. CloudLinux mod_maxcache is the recommended snippet mode.',
+            'not_detected' => 'Not detected from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
+            default => 'Could not be verified from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
+        };
     }
 }

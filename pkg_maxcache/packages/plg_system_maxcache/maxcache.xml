@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.1</version>
+	<version>0.1.2</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -85,6 +85,12 @@
 					<option value="0">JNO</option>
 					<option value="1">JYES</option>
 				</field>
+
+				<field
+					name="plugin_order_status"
+					type="PluginOrderStatus"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_PLUGIN_ORDER_STATUS_LABEL"
+				/>
 			</fieldset>
 
 			<fieldset name="advanced">
