@@ -7,9 +7,9 @@
 
 namespace Vendor\Plugin\System\Maxcache\Field;
 
-use Joomla\CMS\Factory;
 use Joomla\CMS\Form\FormField;
 use Joomla\CMS\Session\Session;
+use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 
 \defined('_JEXEC') or die;
 
@@ -19,10 +19,12 @@ final class HtaccessActionsField extends FormField
 
     protected function getInput(): string
     {
-        $app = Factory::getApplication();
-        $extensionId = (int) $app->getInput()->getInt('extension_id');
         $token = Session::getFormToken();
-        $confirmMessage = "Apply the current saved MAx Cache snippet to .htaccess? A backup will be created before writing.";
+        $usesAdminTools = AdminToolsManager::isAvailable();
+        $targetLabel = $usesAdminTools ? 'Admin Tools footer and rebuild .htaccess' : '.htaccess';
+        $confirmMessage = $usesAdminTools
+            ? 'Apply the current saved MAx Cache snippet to the Admin Tools custom footer and rebuild .htaccess? Backups will be created before writing.'
+            : 'Apply the current saved MAx Cache snippet to .htaccess? A backup will be created before writing.';
         $confirm = htmlspecialchars($confirmMessage, ENT_QUOTES, 'UTF-8');
         $applyScript = <<<JS
 (function () {
@@ -56,7 +58,7 @@ JS;
         $html[] = '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'maxcache-snippet-preview\')?.scrollIntoView({behavior:\'smooth\', block:\'center\'});">Preview snippet</button>';
         $html[] = '</div>';
         $html[] = '<div class="btn-group">';
-        $html[] = '<button type="button" class="btn btn-success" onclick="' . htmlspecialchars($applyScript, ENT_QUOTES, 'UTF-8') . '">Apply snippet to .htaccess</button>';
+        $html[] = '<button type="button" class="btn btn-success" onclick="' . htmlspecialchars($applyScript, ENT_QUOTES, 'UTF-8') . '">Apply snippet via ' . htmlspecialchars($targetLabel, ENT_QUOTES, 'UTF-8') . '</button>';
         $html[] = '<input type="hidden" name="' . $token . '" value="1">';
         $html[] = '</div>';
         $html[] = '</div>';

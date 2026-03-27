@@ -27,6 +27,7 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\SubscriberInterface;
+use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
@@ -286,15 +287,23 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             ]
         );
 
-        $status = HtaccessManager::getStatus($snippet);
+        if (AdminToolsManager::isAvailable()) {
+            $result = AdminToolsManager::applySnippet($snippet);
+            $message = 'MAx Cache snippet applied to the Admin Tools custom .htaccess footer and .htaccess was rebuilt.';
 
-        if ($status['akeeba_detected']) {
-            $app->enqueueMessage('Akeeba Admin Tools markers were detected in .htaccess. Review rule ordering carefully after applying the managed MAx Cache block.', 'warning');
+            if (!empty($result['footer_backup_path'])) {
+                $message .= ' Footer backup created at ' . $result['footer_backup_path'] . '.';
+            }
+        } else {
+            $status = HtaccessManager::getStatus($snippet);
+
+            if ($status['akeeba_detected']) {
+                $app->enqueueMessage('Akeeba Admin Tools markers were detected in .htaccess. Review rule ordering carefully after applying the managed MAx Cache block.', 'warning');
+            }
+
+            $result = HtaccessManager::applySnippet($snippet);
+            $message = 'MAx Cache snippet applied to .htaccess.';
         }
-
-        $result = HtaccessManager::applySnippet($snippet);
-
-        $message = 'MAx Cache snippet applied to .htaccess.';
 
         if ($result['backup_path']) {
             $message .= ' Backup created at ' . $result['backup_path'] . '.';

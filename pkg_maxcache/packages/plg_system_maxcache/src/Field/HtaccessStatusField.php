@@ -8,6 +8,7 @@
 namespace Vendor\Plugin\System\Maxcache\Field;
 
 use Joomla\CMS\Form\FormField;
+use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
@@ -30,21 +31,28 @@ final class HtaccessStatusField extends FormField
         ];
 
         $snippet = SnippetBuilder::build($mode, $params);
-        $status = HtaccessManager::getStatus($snippet);
+        $adminToolsAvailable = AdminToolsManager::isAvailable();
+        $status = $adminToolsAvailable
+            ? AdminToolsManager::getStatus($snippet)
+            : HtaccessManager::getStatus($snippet);
         $modMaxcache = ServerCapabilityDetector::detectModMaxcache();
 
         $stateLabel = match ($status['state']) {
             'applied' => 'Applied',
             'outdated' => 'Applied snippet is outdated',
+            'unknown' => 'Could not verify current apply state',
             default => 'Snippet not applied',
         };
 
         $html = [];
         $html[] = '<div class="alert alert-info">';
         $html[] = '<p><strong>mod_maxcache:</strong> ' . htmlspecialchars($this->buildModMaxcacheMessage($modMaxcache), ENT_QUOTES, 'UTF-8') . '</p>';
+        $html[] = '<p><strong>Apply target:</strong> ' . htmlspecialchars($adminToolsAvailable ? 'Akeeba Admin Tools custom footer + .htaccess rebuild' : 'Direct .htaccess managed block', ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>.htaccess status:</strong> ' . htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') . '</p>';
 
-        if ($status['akeeba_detected']) {
+        if ($adminToolsAvailable) {
+            $html[] = '<p><strong>Admin Tools:</strong> Detected. Apply writes the managed MAx Cache block into "Custom .htaccess rules at the bottom of the file" and then rebuilds .htaccess.</p>';
+        } elseif (($status['akeeba_detected'] ?? false) === true) {
             $html[] = '<p><strong>Warning:</strong> Akeeba Admin Tools markers were detected in the current .htaccess. Keep apply/manual actions explicit and verify rule order before changing server config.</p>';
         }
 
@@ -53,7 +61,7 @@ final class HtaccessStatusField extends FormField
         }
 
         $html[] = '<p><strong>Expected hash:</strong> <code>' . htmlspecialchars($status['expected_hash'], ENT_QUOTES, 'UTF-8') . '</code></p>';
-        $html[] = '<p>This scaffold intentionally does not auto-write .htaccess on save. The future apply action should be explicit, create a backup, and require confirmation every time.</p>';
+        $html[] = '<p>This action remains explicit. Saving the plugin never rewrites server config automatically.</p>';
         $html[] = '</div>';
 
         return implode('', $html);
