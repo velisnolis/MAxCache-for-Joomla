@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.12</version>
+	<version>0.1.13</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -165,6 +165,12 @@
 					<option value="targeted">PLG_SYSTEM_MAXCACHE_OPTION_PURGE_TARGETED</option>
 					<option value="full">PLG_SYSTEM_MAXCACHE_OPTION_PURGE_FULL</option>
 				</field>
+
+				<field
+					name="purge_integration_status"
+					type="PurgeIntegrationStatus"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_PURGE_INTEGRATION_STATUS_LABEL"
+				/>
 
 				<field
 					name="debug_headers"
