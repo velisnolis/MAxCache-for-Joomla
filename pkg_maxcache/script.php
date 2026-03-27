@@ -383,18 +383,27 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         }
 
         $updatedFooter = $this->removeManagedBlockFromText($currentFooter);
-
-        if ($updatedFooter === null) {
-            return;
+        if ($updatedFooter !== null) {
+            $this->runCliCommand([
+                $this->getPhpBinary(),
+                JPATH_ROOT . '/cli/joomla.php',
+                'admintools:htmaker:set',
+                '--key=custfoot',
+                '--value=' . $updatedFooter,
+            ]);
         }
 
-        $this->runCliCommand([
-            $this->getPhpBinary(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:set',
-            '--key=custfoot',
-            '--value=' . $updatedFooter,
-        ]);
+        $publicPath = $this->buildPublicCachePath();
+
+        if ($publicPath !== null) {
+            $this->runCliCommand([
+                $this->getPhpBinary(),
+                JPATH_ROOT . '/cli/joomla.php',
+                'admintools:htmaker:set',
+                '--key=exceptiondirs',
+                '--remove=' . ltrim($publicPath, '/'),
+            ], true);
+        }
 
         $this->runCliCommand([
             $this->getPhpBinary(),
@@ -480,6 +489,32 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         }
 
         return 'php';
+    }
+
+    private function buildPublicCachePath(): ?string
+    {
+        $cacheRoot = rtrim($this->recommendedCacheRoot(), '/');
+        $siteRoot = rtrim((string) JPATH_ROOT, '/');
+
+        if ($siteRoot !== '' && str_starts_with($cacheRoot, $siteRoot . '/')) {
+            $suffix = trim(substr($cacheRoot, strlen($siteRoot) + 1), '/');
+
+            return '/' . ($suffix === '' ? 'maxcache' : $suffix);
+        }
+
+        foreach (['/public_html/', '/htdocs/', '/www/'] as $marker) {
+            $position = strpos($cacheRoot, $marker);
+
+            if ($position === false) {
+                continue;
+            }
+
+            $suffix = trim(substr($cacheRoot, $position + strlen($marker)), '/');
+
+            return '/' . ($suffix === '' ? 'maxcache' : $suffix);
+        }
+
+        return null;
     }
 
     private function runCliCommand(array $command, bool $allowFailure = false): array

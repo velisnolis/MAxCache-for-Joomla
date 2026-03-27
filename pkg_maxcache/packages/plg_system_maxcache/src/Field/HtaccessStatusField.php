@@ -57,7 +57,7 @@ final class HtaccessStatusField extends FormField
         }
 
         if ($adminToolsAvailable) {
-            $html[] = '<p><strong>Admin Tools:</strong> Detected. Apply writes the managed MAx Cache block into "Custom .htaccess rules at the bottom of the file" and then rebuilds .htaccess.</p>';
+            $html[] = '<p><strong>Admin Tools:</strong> Detected. Apply writes the managed MAx Cache block into "Custom .htaccess rules at the bottom of the file", adds the public cache path to Server Protection exceptions, and then rebuilds .htaccess.</p>';
         } elseif (($status['akeeba_detected'] ?? false) === true) {
             $html[] = '<p><strong>Warning:</strong> Akeeba Admin Tools markers were detected in the current .htaccess. Keep apply/manual actions explicit and verify rule order before changing server config.</p>';
         }

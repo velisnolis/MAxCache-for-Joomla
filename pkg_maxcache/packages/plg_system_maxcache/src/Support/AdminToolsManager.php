@@ -14,6 +14,7 @@ use Joomla\CMS\Date\Date;
 final class AdminToolsManager
 {
     private const OPTION_KEY = 'custfoot';
+    private const EXCEPTION_DIRS_KEY = 'exceptiondirs';
 
     public static function isAvailable(): bool
     {
@@ -74,7 +75,7 @@ final class AdminToolsManager
         ];
     }
 
-    public static function applySnippet(string $snippet): array
+    public static function applySnippet(string $snippet, string $cacheRoot): array
     {
         if (!self::isAvailable()) {
             throw new \RuntimeException('Admin Tools is not available on this Joomla installation.');
@@ -99,6 +100,8 @@ final class AdminToolsManager
 
         $footerBackup = self::buildFooterBackupPath();
         @file_put_contents($footerBackup, $currentFooter);
+        $exceptionDirsBackup = self::buildExceptionDirsBackupPath();
+        @file_put_contents($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         $htaccessBackup = null;
         $htaccessPath = HtaccessManager::getHtaccessPath();
@@ -115,6 +118,8 @@ final class AdminToolsManager
             '--key=' . self::OPTION_KEY,
             '--value=' . $updatedFooter,
         ]);
+
+        self::ensurePublicCachePathException($cacheRoot);
 
         self::runCliCommand([
             self::getPhpBinary(),
@@ -127,16 +132,18 @@ final class AdminToolsManager
             'hash' => HtaccessManager::buildHash($snippet),
             'backup_path' => $htaccessBackup,
             'footer_backup_path' => $footerBackup,
+            'exceptiondirs_backup_path' => $exceptionDirsBackup,
         ];
     }
 
-    public static function removeManagedBlock(): array
+    public static function removeManagedBlock(string $cacheRoot = ''): array
     {
         if (!self::isAvailable()) {
             return [
                 'removed' => false,
                 'backup_path' => null,
                 'footer_backup_path' => null,
+                'exceptiondirs_backup_path' => null,
             ];
         }
 
@@ -147,21 +154,21 @@ final class AdminToolsManager
                 'removed' => false,
                 'backup_path' => null,
                 'footer_backup_path' => null,
+                'exceptiondirs_backup_path' => null,
             ];
         }
 
         $updatedFooter = HtaccessManager::removeManagedBlockFromContents($currentFooter);
 
         if ($updatedFooter === null) {
-            return [
-                'removed' => false,
-                'backup_path' => null,
-                'footer_backup_path' => null,
-            ];
+            $footerBackup = null;
+        } else {
+            $footerBackup = self::buildFooterBackupPath();
+            @file_put_contents($footerBackup, $currentFooter);
         }
 
-        $footerBackup = self::buildFooterBackupPath();
-        @file_put_contents($footerBackup, $currentFooter);
+        $exceptionDirsBackup = self::buildExceptionDirsBackupPath();
+        @file_put_contents($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         $htaccessBackup = null;
         $htaccessPath = HtaccessManager::getHtaccessPath();
@@ -171,13 +178,17 @@ final class AdminToolsManager
             @copy($htaccessPath, $htaccessBackup);
         }
 
-        self::runCliCommand([
-            self::getPhpBinary(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:set',
-            '--key=' . self::OPTION_KEY,
-            '--value=' . $updatedFooter,
-        ]);
+        if ($updatedFooter !== null) {
+            self::runCliCommand([
+                self::getPhpBinary(),
+                JPATH_ROOT . '/cli/joomla.php',
+                'admintools:htmaker:set',
+                '--key=' . self::OPTION_KEY,
+                '--value=' . $updatedFooter,
+            ]);
+        }
+
+        self::removePublicCachePathException($cacheRoot);
 
         self::runCliCommand([
             self::getPhpBinary(),
@@ -189,6 +200,7 @@ final class AdminToolsManager
             'removed' => true,
             'backup_path' => $htaccessBackup,
             'footer_backup_path' => $footerBackup,
+            'exceptiondirs_backup_path' => $exceptionDirsBackup,
         ];
     }
 
@@ -214,11 +226,83 @@ final class AdminToolsManager
         return (string) $payload[self::OPTION_KEY];
     }
 
+    /**
+     * @return string[]
+     */
+    private static function getCurrentExceptionDirs(): array
+    {
+        $result = self::runCliCommand([
+            self::getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:get',
+            '--option=' . self::EXCEPTION_DIRS_KEY,
+        ], true);
+
+        if ($result['exit_code'] !== 0) {
+            return [];
+        }
+
+        $payload = json_decode(trim($result['stdout']), true);
+
+        if (!is_array($payload) || !array_key_exists(self::EXCEPTION_DIRS_KEY, $payload) || !is_array($payload[self::EXCEPTION_DIRS_KEY])) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('strval', $payload[self::EXCEPTION_DIRS_KEY]), static fn ($value) => trim($value) !== ''));
+    }
+
     private static function buildFooterBackupPath(): string
     {
         $date = (new Date())->format('Ymd-His');
 
         return JPATH_ROOT . '/.htaccess.maxcache-admintools-footer.' . $date . '.bak';
+    }
+
+    private static function buildExceptionDirsBackupPath(): string
+    {
+        $date = (new Date())->format('Ymd-His');
+
+        return JPATH_ROOT . '/.htaccess.maxcache-admintools-exceptiondirs.' . $date . '.bak';
+    }
+
+    private static function ensurePublicCachePathException(string $cacheRoot): void
+    {
+        $publicPath = CachePathHelper::buildPublicPath($cacheRoot);
+
+        if ($publicPath === null) {
+            return;
+        }
+
+        $current = self::getCurrentExceptionDirs();
+
+        if (\in_array(ltrim($publicPath, '/'), array_map(static fn ($item) => ltrim((string) $item, '/'), $current), true)) {
+            return;
+        }
+
+        self::runCliCommand([
+            self::getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:set',
+            '--key=' . self::EXCEPTION_DIRS_KEY,
+            '--add=' . ltrim($publicPath, '/'),
+        ]);
+    }
+
+    private static function removePublicCachePathException(string $cacheRoot): void
+    {
+        $publicPath = CachePathHelper::buildPublicPath($cacheRoot);
+
+        if ($publicPath === null) {
+            return;
+        }
+
+        self::runCliCommand([
+            self::getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:set',
+            '--key=' . self::EXCEPTION_DIRS_KEY,
+            '--remove=' . ltrim($publicPath, '/'),
+        ], true);
     }
 
     private static function getPhpBinary(): string

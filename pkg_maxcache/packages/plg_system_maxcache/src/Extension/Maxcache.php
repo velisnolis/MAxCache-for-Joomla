@@ -322,11 +322,18 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             );
 
             if (AdminToolsManager::isAvailable()) {
-                $result = AdminToolsManager::applySnippet($snippet);
+                $result = AdminToolsManager::applySnippet(
+                    $snippet,
+                    (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache')
+                );
                 $message = 'MAx Cache snippet applied to the Admin Tools custom .htaccess footer and .htaccess was rebuilt.';
 
                 if (!empty($result['footer_backup_path'])) {
                     $message .= ' Footer backup created at ' . $result['footer_backup_path'] . '.';
+                }
+
+                if (!empty($result['exceptiondirs_backup_path'])) {
+                    $message .= ' Admin Tools server-protection exceptions backup created at ' . $result['exceptiondirs_backup_path'] . '.';
                 }
             } else {
                 $status = HtaccessManager::getStatus($snippet);
