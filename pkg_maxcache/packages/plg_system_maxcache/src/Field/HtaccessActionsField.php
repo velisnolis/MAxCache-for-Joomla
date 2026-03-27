@@ -26,15 +26,18 @@ final class HtaccessActionsField extends FormField
             ? 'Apply the current saved MAx Cache snippet to the Admin Tools custom footer and rebuild .htaccess? Backups will be created before writing.'
             : 'Apply the current saved MAx Cache snippet to .htaccess? A backup will be created before writing.';
         $confirm = htmlspecialchars($confirmMessage, ENT_QUOTES, 'UTF-8');
-        $applyScript = <<<JS
+$applyScript = <<<JS
 (function () {
     if (!confirm('{$confirm}')) {
         return;
     }
 
-    const form = document.getElementById('adminForm');
+    const form = document.getElementById('adminForm')
+        || document.forms.adminForm
+        || document.querySelector('form');
 
     if (!form) {
+        alert('Could not find the Joomla plugin edit form. Save the plugin normally and reload this page before applying the snippet.');
         return;
     }
 
