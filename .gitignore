@@ -1,0 +1,5 @@
+.docker-build/
+.gstack/
+pkg_maxcache/packages/*.zip
+pkg_maxcache-*.zip
+*.bak

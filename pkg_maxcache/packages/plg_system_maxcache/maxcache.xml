@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="system" method="upgrade">
+	<name>plg_system_maxcache</name>
+	<author>Alex Miras</author>
+	<creationDate>2026-03</creationDate>
+	<copyright>(C) 2026 Alex Miras</copyright>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<authorEmail>hola@alexmiras.com</authorEmail>
+	<authorUrl>https://alexmiras.com</authorUrl>
+	<version>0.1.0</version>
+	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
+	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
+	<files>
+		<folder plugin="maxcache">services</folder>
+		<folder>src</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_system_maxcache.ini</language>
+		<language tag="en-GB">language/en-GB/plg_system_maxcache.sys.ini</language>
+	</languages>
+	<config addfieldprefix="Vendor\Plugin\System\Maxcache\Field">
+		<fields name="params">
+			<fieldset name="basic">
+				<field
+					name="browsercache"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_BROWSERCACHE_LABEL"
+					default="0"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+
+				<field
+					name="exclude_menu_items"
+					type="menuitem"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_EXCLUDE_MENU_ITEMS_LABEL"
+					multiple="multiple"
+					filter="intarray"
+					layout="joomla.form.field.groupedlist-fancy-select"
+				/>
+
+				<field
+					name="cache_root"
+					type="text"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_CACHE_ROOT_LABEL"
+					default="/var/cache/joomla-maxcache"
+					filter="string"
+					size="80"
+				/>
+
+				<field
+					name="path_mode"
+					type="list"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_PATH_MODE_LABEL"
+					default="host-language-sef"
+					filter="cmd"
+				>
+					<option value="host-sef">PLG_SYSTEM_MAXCACHE_OPTION_HOST_SEF</option>
+					<option value="host-language-sef">PLG_SYSTEM_MAXCACHE_OPTION_HOST_LANGUAGE_SEF</option>
+				</field>
+
+				<field
+					name="vary_language"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_VARY_LANGUAGE_LABEL"
+					default="1"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+
+				<field
+					name="vary_mobile"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_VARY_MOBILE_LABEL"
+					default="0"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+			</fieldset>
+
+			<fieldset name="advanced">
+				<field
+					name="exclude"
+					type="textarea"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_EXCLUDE_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_EXCLUDE_DESC"
+					rows="12"
+					filter="raw"
+				/>
+
+				<field
+					name="site_hosts"
+					type="textarea"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_SITE_HOSTS_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_SITE_HOSTS_DESC"
+					rows="4"
+					filter="raw"
+				/>
+
+				<field
+					name="bypass_cookies"
+					type="textarea"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_BYPASS_COOKIES_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_BYPASS_COOKIES_DESC"
+					rows="6"
+					filter="raw"
+					default="joomla_user_state\njoomla_remember_me\ncf_clearance"
+				/>
+
+				<field
+					name="allowed_query_params"
+					type="textarea"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_ALLOWED_QUERY_PARAMS_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_ALLOWED_QUERY_PARAMS_DESC"
+					rows="6"
+					filter="raw"
+				/>
+
+				<field
+					name="write_gzip"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_WRITE_GZIP_LABEL"
+					default="0"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+
+				<field
+					name="purge_strategy"
+					type="list"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_PURGE_STRATEGY_LABEL"
+					default="targeted"
+					filter="cmd"
+				>
+					<option value="targeted">PLG_SYSTEM_MAXCACHE_OPTION_PURGE_TARGETED</option>
+					<option value="full">PLG_SYSTEM_MAXCACHE_OPTION_PURGE_FULL</option>
+				</field>
+
+				<field
+					name="debug_headers"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_DEBUG_HEADERS_LABEL"
+					default="0"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+
+				<field
+					name="server_snippet_mode"
+					type="list"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_SERVER_SNIPPET_MODE_LABEL"
+					default="apache"
+					filter="cmd"
+				>
+					<option value="apache">PLG_SYSTEM_MAXCACHE_OPTION_SERVER_SNIPPET_APACHE</option>
+					<option value="mod_maxcache">PLG_SYSTEM_MAXCACHE_OPTION_SERVER_SNIPPET_MOD_MAXCACHE</option>
+				</field>
+
+				<field
+					name="server_snippet_help"
+					type="note"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_SERVER_SNIPPET_HELP_LABEL"
+					class="alert alert-info"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_SERVER_SNIPPET_HELP_DESC"
+				/>
+
+				<field
+					name="htaccess_status"
+					type="HtaccessStatus"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_HTACCESS_STATUS_LABEL"
+				/>
+
+				<field
+					name="htaccess_actions"
+					type="HtaccessActions"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_HTACCESS_ACTIONS_LABEL"
+				/>
+
+				<field
+					name="server_snippet_preview"
+					type="Snippet"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_SERVER_SNIPPET_PREVIEW_LABEL"
+					mode="mod_maxcache"
+				/>
+			</fieldset>
+		</fields>
+	</config>
+</extension>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension version="5.0" type="package" method="upgrade">
+    <name>MAxCache for Joomla</name>
+    <packagename>maxcache</packagename>
+    <version>0.1.0</version>
+    <creationDate>2026-03-27</creationDate>
+    <author>Alex Miras</author>
+    <authorEmail>alex@miras.pro</authorEmail>
+    <url>https://miras.pro</url>
+    <description>MAxCache for Joomla. Static full-page cache plugin for Joomla with deterministic filesystem paths and CloudLinux MAx Cache oriented delivery.</description>
+    <scriptfile>script.php</scriptfile>
+    <blockChildUninstall>true</blockChildUninstall>
+
+    <files folder="packages">
+        <file type="plugin" group="system" id="maxcache">plg_system_maxcache.zip</file>
+    </files>
+
+    <updateservers>
+        <server type="extension" priority="1" name="MAxCache for Joomla Package">https://raw.githubusercontent.com/velisnolis/MAxCache-for-Joomla/main/updates/pkg_maxcache.xml</server>
+    </updateservers>
+</extension>
