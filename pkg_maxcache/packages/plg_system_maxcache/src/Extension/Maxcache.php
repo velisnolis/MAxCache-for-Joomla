@@ -28,6 +28,7 @@ use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\SubscriberInterface;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
+use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
@@ -366,7 +367,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     private function isExcludedUrl(): bool
     {
         $exclusions = array_values(array_unique(array_merge(
-            $this->getBuiltInExclusions(),
+            BuiltInExclusions::getRuntimePatterns(),
             $this->normalizeLineList((string) $this->params->get('exclude', ''))
         )));
 
@@ -384,18 +385,6 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         return false;
-    }
-
-    private function getBuiltInExclusions(): array
-    {
-        return [
-            '/administrator(?:/.*|$)',
-            '/api(?:/.*|$)',
-            '/component/ajax(?:/.*|$)',
-            '(?:^|[?&])option=com_ajax(?:[=&]|$)',
-            '(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)',
-            '(?:^|[?&])tmpl=component(?:[=&]|$)',
-        ];
     }
 
     private function hasBypassCookie(): bool

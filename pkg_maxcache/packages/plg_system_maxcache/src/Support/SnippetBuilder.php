@@ -127,21 +127,11 @@ HTACCESS);
     private static function buildUriExclusions(array $params): string
     {
         $patterns = array_values(array_unique(array_merge(
-            self::getBuiltInExclusions(),
+            BuiltInExclusions::getSnippetPatterns(),
             self::normalizeLineList((string) ($params['exclude'] ?? ''))
         )));
 
         return implode('|', $patterns);
-    }
-
-    private static function getBuiltInExclusions(): array
-    {
-        return [
-            '/(?:administrator|api|component/ajax)(?:/.*|$)',
-            '(?:^|[?&])option=com_ajax(?:[=&]|$)',
-            '(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)',
-            '(?:^|[?&])tmpl=component(?:[=&]|$)',
-        ];
     }
 
     private static function buildHostCondition(array $params): string

@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.8</version>
+	<version>0.1.9</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -100,6 +100,12 @@
 			</fieldset>
 
 			<fieldset name="advanced">
+				<field
+					name="built_in_exclusions"
+					type="BuiltInExclusions"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_BUILT_IN_EXCLUSIONS_LABEL"
+				/>
+
 				<field
 					name="exclude"
 					type="textarea"
