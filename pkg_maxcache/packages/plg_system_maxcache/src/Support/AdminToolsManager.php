@@ -255,14 +255,25 @@ final class AdminToolsManager
     {
         $date = (new Date())->format('Ymd-His');
 
-        return JPATH_ROOT . '/.htaccess.maxcache-admintools-footer.' . $date . '.bak';
+        return self::getBackupDirectory() . '/admintools-footer.' . $date . '.bak';
     }
 
     private static function buildExceptionDirsBackupPath(): string
     {
         $date = (new Date())->format('Ymd-His');
 
-        return JPATH_ROOT . '/.htaccess.maxcache-admintools-exceptiondirs.' . $date . '.bak';
+        return self::getBackupDirectory() . '/admintools-exceptiondirs.' . $date . '.bak';
+    }
+
+    private static function getBackupDirectory(): string
+    {
+        $dir = JPATH_ROOT . '/administrator/cache/maxcache-backups';
+
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            throw new \RuntimeException('Could not create backup directory: ' . $dir);
+        }
+
+        return $dir;
     }
 
     private static function ensurePublicCachePathException(string $cacheRoot): void

@@ -280,10 +280,23 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
 
     private function getFrontendRootUrl(): ?string
     {
+        $config = Factory::getConfig();
+        $liveSite = rtrim((string) $config->get('live_site', ''), '/');
+
+        if ($liveSite !== '' && filter_var($liveSite, FILTER_VALIDATE_URL)) {
+            return $liveSite . '/';
+        }
+
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 
         if ($host === '') {
+            return null;
+        }
+
+        $hostOnly = strtolower(strtok($host, ':'));
+
+        if (filter_var($hostOnly, FILTER_VALIDATE_IP)) {
             return null;
         }
 
@@ -303,8 +316,9 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
                     CURLOPT_FOLLOWLOCATION => false,
                     CURLOPT_TIMEOUT => 5,
                     CURLOPT_CONNECTTIMEOUT => 3,
-                    CURLOPT_SSL_VERIFYPEER => false,
-                    CURLOPT_SSL_VERIFYHOST => false,
+                    CURLOPT_SSL_VERIFYPEER => true,
+                    CURLOPT_SSL_VERIFYHOST => 2,
+                    CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
                 ]);
 
                 $raw = curl_exec($ch);
@@ -319,7 +333,8 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
             }
         }
 
-        $result = @get_headers($url, true);
+        $context = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
+        $result = @get_headers($url, true, $context);
 
         return \is_array($result) ? $result : [];
     }

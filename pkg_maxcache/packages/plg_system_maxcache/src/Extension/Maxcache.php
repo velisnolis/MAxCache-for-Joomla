@@ -121,7 +121,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        $this->gzipPath = $this->params->get('write_gzip', 0) ? $this->targetPath . '.gz' : null;
+        $this->gzipPath = $this->params->get('write_gzip', 0) ? $this->targetPath . '_gzip' : null;
         $this->eligible = true;
         $this->emitDebugHeaders('eligible');
     }
@@ -483,7 +483,7 @@ HTML;
     {
         $referer = (string) $this->getApplication()->getInput()->server->getString('HTTP_REFERER', '');
 
-        if ($referer !== '') {
+        if ($referer !== '' && str_starts_with($referer, Uri::root())) {
             return $referer;
         }
 
@@ -616,6 +616,13 @@ HTML;
         $uri = Uri::getInstance();
         $server = $this->getApplication()->getInput()->server;
         $host = strtolower((string) ($server->getString('HTTP_HOST', '') ?: $uri->getHost() ?: 'site'));
+
+        $knownHosts = $this->getKnownHosts();
+
+        if ($knownHosts !== ['site'] && !\in_array($host, $knownHosts, true)) {
+            return null;
+        }
+
         $requestUri = (string) $server->getString('REQUEST_URI', '');
         $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?: $uri->getPath());
 
@@ -874,7 +881,11 @@ HTML;
                 ->from($db->quoteName('#__menu'))
                 ->where($db->quoteName('published') . ' = 1')
                 ->where($db->quoteName('path') . ' <> ' . $db->quote(''))
-                ->where($db->quoteName('link') . ' LIKE ' . $db->quote('%view=article%id=' . $articleId . '%'));
+                ->where('('
+                    . $db->quoteName('link') . ' LIKE ' . $db->quote('%view=article%&id=' . $articleId)
+                    . ' OR '
+                    . $db->quoteName('link') . ' LIKE ' . $db->quote('%view=article%&id=' . $articleId . '&%')
+                    . ')');
 
             $db->setQuery($query);
 

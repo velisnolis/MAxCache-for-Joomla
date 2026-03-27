@@ -8,6 +8,8 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Date\Date;
+use Joomla\CMS\Filesystem\Folder;
+
 \defined('_JEXEC') or die;
 
 final class HtaccessManager
@@ -111,7 +113,18 @@ final class HtaccessManager
     {
         $date = (new Date())->format('Ymd-His');
 
-        return self::getHtaccessPath() . '.maxcache.' . $date . '.bak';
+        return self::getBackupDirectory() . '/htaccess.' . $date . '.bak';
+    }
+
+    private static function getBackupDirectory(): string
+    {
+        $dir = JPATH_ROOT . '/administrator/cache/maxcache-backups';
+
+        if (!is_dir($dir)) {
+            Folder::create($dir);
+        }
+
+        return $dir;
     }
 
     public static function applySnippet(string $snippet): array
