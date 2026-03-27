@@ -55,6 +55,7 @@ HTACCESS);
         $cookies = self::buildCookieRegex($params);
         $uriExclusions = self::buildUriExclusions($params);
         $queryParams = self::normalizeLineList((string) ($params['allowed_query_params'] ?? ''));
+        $gzipSuffix = !empty($params['write_gzip']) ? '{GZIP_SUFFIX}' : '';
 
         if ($cachePathRegex !== '') {
             $uriExclusions = $uriExclusions !== ''
@@ -67,7 +68,7 @@ HTACCESS);
             '    MaxCache On',
             '',
             '    # MAx Cache for Joomla preview snippet',
-            '    MaxCachePath ' . $cacheRoot . '/{HTTP_HOST}{REQUEST_URI}{QS_SUFFIX}/index{MOBILE_SUFFIX}{SSL_SUFFIX}.html{GZIP_SUFFIX}',
+            '    MaxCachePath ' . $cacheRoot . '/{HTTP_HOST}{REQUEST_URI}{QS_SUFFIX}/index{MOBILE_SUFFIX}{SSL_SUFFIX}.html' . $gzipSuffix,
         ];
 
         if ($uriExclusions !== '') {
