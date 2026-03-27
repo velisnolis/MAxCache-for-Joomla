@@ -47,7 +47,7 @@ HTACCESS);
 
     public static function buildModMaxcacheSnippet(array $params): string
     {
-        $cacheRoot = rtrim((string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache'), '/');
+        $cacheRoot = self::buildCachePublicPath($params);
         $cookies = self::buildCookieRegex($params);
         $uriExclusions = self::buildUriExclusions($params);
         $queryParams = self::normalizeLineList((string) ($params['allowed_query_params'] ?? ''));
@@ -75,6 +75,25 @@ HTACCESS);
         $lines[] = '</IfModule>';
 
         return implode("\n", $lines);
+    }
+
+    private static function buildCachePublicPath(array $params): string
+    {
+        $cacheRoot = rtrim((string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache'), '/');
+
+        foreach (['/public_html/', '/htdocs/', '/www/'] as $marker) {
+            $position = strpos($cacheRoot, $marker);
+
+            if ($position === false) {
+                continue;
+            }
+
+            $suffix = trim(substr($cacheRoot, $position + strlen($marker)), '/');
+
+            return '/' . ($suffix === '' ? 'maxcache' : $suffix);
+        }
+
+        return $cacheRoot;
     }
 
     private static function buildCookieRegex(array $params): string

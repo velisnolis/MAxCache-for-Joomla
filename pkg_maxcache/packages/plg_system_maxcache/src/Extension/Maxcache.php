@@ -436,7 +436,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         if ((int) $this->params->get('vary_language', 1) === 1) {
             $languageSegment = $this->detectLanguageSegment($segments);
 
-            if ($languageSegment !== '') {
+            if ($languageSegment !== '' && $hasLanguagePrefix) {
                 $parts[] = $languageSegment;
 
                 if ($pathMode === 'host-language-sef' && $hasLanguagePrefix && $segments !== []) {
