@@ -419,15 +419,19 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
         $uri = Uri::getInstance();
-        $host = strtolower((string) ($uri->getHost() ?: $this->getApplication()->getInput()->server->getString('HTTP_HOST', 'site')));
+        $server = $this->getApplication()->getInput()->server;
+        $host = strtolower((string) ($server->getString('HTTP_HOST', '') ?: $uri->getHost() ?: 'site'));
+        $requestUri = (string) $server->getString('REQUEST_URI', '');
+        $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?: $uri->getPath());
 
         if ($root === '' || $host === '') {
             return null;
         }
 
-        $segments = array_values(array_filter(explode('/', trim((string) $uri->getPath(), '/')), 'strlen'));
+        $segments = array_values(array_filter(explode('/', trim($requestPath, '/')), 'strlen'));
         $pathMode = (string) $this->params->get('path_mode', 'host-language-sef');
         $parts = [$root, $this->sanitizePathSegment($host)];
+        $hasLanguagePrefix = $this->requestHasLanguagePrefix($segments);
 
         if ((int) $this->params->get('vary_language', 1) === 1) {
             $languageSegment = $this->detectLanguageSegment($segments);
@@ -435,7 +439,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             if ($languageSegment !== '') {
                 $parts[] = $languageSegment;
 
-                if ($pathMode === 'host-language-sef' && $segments !== []) {
+                if ($pathMode === 'host-language-sef' && $hasLanguagePrefix && $segments !== []) {
                     array_shift($segments);
                 }
             }
@@ -468,12 +472,8 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
     private function detectLanguageSegment(array $segments): string
     {
-        if ($segments !== []) {
-            $first = strtolower((string) $segments[0]);
-
-            if ((bool) preg_match('#^[a-z]{2}(?:-[a-z]{2})?$#', $first)) {
-                return $first;
-            }
+        if ($this->requestHasLanguagePrefix($segments)) {
+            return strtolower((string) $segments[0]);
         }
 
         $tag = strtolower((string) $this->getApplication()->getLanguage()->getTag());
@@ -483,6 +483,15 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         return explode('-', $tag)[0];
+    }
+
+    private function requestHasLanguagePrefix(array $segments): bool
+    {
+        if ($segments === []) {
+            return false;
+        }
+
+        return (bool) preg_match('#^[a-z]{2}(?:-[a-z]{2})?$#', strtolower((string) $segments[0]));
     }
 
     private function isMobileRequest(): bool
