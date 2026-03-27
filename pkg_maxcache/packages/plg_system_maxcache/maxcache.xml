@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.22</version>
+	<version>0.1.23</version>
 	<description>PLG_SYSTEM_MAXCACHE_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Plugin\System\Maxcache</namespace>
 	<files>
@@ -117,7 +117,7 @@
 
 				<field
 					name="site_hosts"
-					type="textarea"
+					type="SiteHosts"
 					label="PLG_SYSTEM_MAXCACHE_FIELD_SITE_HOSTS_LABEL"
 					description="PLG_SYSTEM_MAXCACHE_FIELD_SITE_HOSTS_DESC"
 					rows="4"

@@ -31,6 +31,7 @@ use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
+use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 \defined('_JEXEC') or die;
@@ -812,19 +813,9 @@ HTML;
 
     private function getKnownHosts(): array
     {
-        $configured = $this->normalizeLineList((string) $this->params->get('site_hosts', ''));
+        $detected = SiteHostDetector::detect((string) $this->params->get('site_hosts', ''));
 
-        if ($configured !== []) {
-            return $configured;
-        }
-
-        $host = Uri::getInstance()->getHost();
-
-        if ($host !== '') {
-            return [$host];
-        }
-
-        return ['site'];
+        return $detected !== [] ? $detected : ['site'];
     }
 
     private function resolvePurgePaths(string $context, object $item): array

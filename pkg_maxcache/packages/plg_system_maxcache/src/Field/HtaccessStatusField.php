@@ -12,6 +12,7 @@ use Joomla\CMS\Factory;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
+use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 \defined('_JEXEC') or die;
@@ -25,10 +26,11 @@ final class HtaccessStatusField extends FormField
         $mode = (string) $this->form->getValue('server_snippet_mode', 'params', 'mod_maxcache');
         $params = [
             'cache_root' => $this->form->getValue('cache_root', 'params'),
-            'site_hosts' => $this->form->getValue('site_hosts', 'params'),
+            'site_hosts' => implode("\n", SiteHostDetector::detect((string) $this->form->getValue('site_hosts', 'params'))),
             'exclude' => $this->form->getValue('exclude', 'params'),
             'bypass_cookies' => $this->form->getValue('bypass_cookies', 'params'),
             'allowed_query_params' => $this->form->getValue('allowed_query_params', 'params'),
+            'write_gzip' => (int) $this->form->getValue('write_gzip', 'params', 0),
         ];
 
         $snippet = SnippetBuilder::build($mode, $params);
@@ -50,6 +52,9 @@ final class HtaccessStatusField extends FormField
         $html[] = '<p><strong>mod_maxcache:</strong> ' . htmlspecialchars($this->buildModMaxcacheMessage($modMaxcache), ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>Apply target:</strong> ' . htmlspecialchars($adminToolsAvailable ? 'Akeeba Admin Tools custom footer + .htaccess rebuild' : 'Direct .htaccess managed block', ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>.htaccess status:</strong> ' . htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') . '</p>';
+        if ($mode === 'mod_maxcache' && (int) $params['write_gzip'] === 0) {
+            $html[] = '<p><strong>Cloudflare:</strong> Proxied setups are supported. When precompressed artifacts are disabled, MAx Cache omits gzip-specific path suffixes automatically.</p>';
+        }
 
         if ($adminToolsAvailable) {
             $html[] = '<p><strong>Admin Tools:</strong> Detected. Apply writes the managed MAx Cache block into "Custom .htaccess rules at the bottom of the file" and then rebuilds .htaccess.</p>';
