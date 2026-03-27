@@ -21,6 +21,8 @@ final class SnippetBuilder
     public static function buildApacheSnippet(array $params): string
     {
         $cacheRoot = rtrim((string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache'), '/');
+        $cachePublicPath = self::buildCachePublicPath($params);
+        $cachePathRegex = self::buildPublicPathRegex($cachePublicPath);
         $cookies = self::buildCookieRegex($params);
         $hostCondition = self::buildHostCondition($params);
         $cookieLine = $cookies !== ''
@@ -37,6 +39,7 @@ final class SnippetBuilder
 {$hostCondition}
     RewriteCond %{REQUEST_METHOD} =GET
     RewriteCond %{REQUEST_URI} !^/administrator/
+    RewriteCond %{REQUEST_URI} !^{$cachePathRegex}(?:/.*|$) [NC]
     RewriteCond %{QUERY_STRING} ^$
 {$cookieLine}
     RewriteCond {$cacheRoot}/%{HTTP_HOST}%{REQUEST_URI}/index-https.html -f
@@ -48,9 +51,16 @@ HTACCESS);
     public static function buildModMaxcacheSnippet(array $params): string
     {
         $cacheRoot = self::buildCachePublicPath($params);
+        $cachePathRegex = self::buildPublicPathRegex($cacheRoot);
         $cookies = self::buildCookieRegex($params);
         $uriExclusions = self::buildUriExclusions($params);
         $queryParams = self::normalizeLineList((string) ($params['allowed_query_params'] ?? ''));
+
+        if ($cachePathRegex !== '') {
+            $uriExclusions = $uriExclusions !== ''
+                ? $uriExclusions . '|' . $cachePathRegex . '(?:/.*|$)'
+                : $cachePathRegex . '(?:/.*|$)';
+        }
 
         $lines = [
             '<IfModule maxcache_module>',
@@ -94,6 +104,17 @@ HTACCESS);
         }
 
         return $cacheRoot;
+    }
+
+    private static function buildPublicPathRegex(string $path): string
+    {
+        $path = '/' . trim($path, '/');
+
+        if ($path === '/') {
+            return '';
+        }
+
+        return preg_quote($path, '#');
     }
 
     private static function buildCookieRegex(array $params): string

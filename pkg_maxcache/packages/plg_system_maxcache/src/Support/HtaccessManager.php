@@ -146,4 +146,40 @@ final class HtaccessManager
             'hash' => self::buildHash($snippet),
         ];
     }
+
+    public static function removeManagedBlock(): ?string
+    {
+        $path = self::getHtaccessPath();
+        $current = self::readCurrentContents();
+        $updated = self::removeManagedBlockFromContents($current);
+
+        if ($updated === null) {
+            return null;
+        }
+
+        $backupPath = null;
+
+        if ($current !== '') {
+            $backupPath = self::buildBackupPath();
+            File::copy($path, $backupPath);
+        }
+
+        File::write($path, $updated);
+
+        return $backupPath;
+    }
+
+    public static function removeManagedBlockFromContents(string $contents): ?string
+    {
+        $block = self::getManagedBlock($contents);
+
+        if ($block === null) {
+            return null;
+        }
+
+        $updated = str_replace($block, '', $contents);
+        $updated = preg_replace("/\n{3,}/", "\n\n", (string) $updated);
+
+        return rtrim((string) $updated) . "\n";
+    }
 }

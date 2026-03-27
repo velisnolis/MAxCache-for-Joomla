@@ -130,6 +130,68 @@ final class AdminToolsManager
         ];
     }
 
+    public static function removeManagedBlock(): array
+    {
+        if (!self::isAvailable()) {
+            return [
+                'removed' => false,
+                'backup_path' => null,
+                'footer_backup_path' => null,
+            ];
+        }
+
+        $currentFooter = self::getCurrentFooter();
+
+        if ($currentFooter === null) {
+            return [
+                'removed' => false,
+                'backup_path' => null,
+                'footer_backup_path' => null,
+            ];
+        }
+
+        $updatedFooter = HtaccessManager::removeManagedBlockFromContents($currentFooter);
+
+        if ($updatedFooter === null) {
+            return [
+                'removed' => false,
+                'backup_path' => null,
+                'footer_backup_path' => null,
+            ];
+        }
+
+        $footerBackup = self::buildFooterBackupPath();
+        @file_put_contents($footerBackup, $currentFooter);
+
+        $htaccessBackup = null;
+        $htaccessPath = HtaccessManager::getHtaccessPath();
+
+        if (is_file($htaccessPath)) {
+            $htaccessBackup = HtaccessManager::buildBackupPath();
+            @copy($htaccessPath, $htaccessBackup);
+        }
+
+        self::runCliCommand([
+            self::getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:set',
+            '--key=' . self::OPTION_KEY,
+            '--value=' . $updatedFooter,
+        ]);
+
+        self::runCliCommand([
+            self::getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:make',
+        ]);
+
+        return [
+            'removed' => true,
+            'backup_path' => $htaccessBackup,
+            'footer_backup_path' => $footerBackup,
+        ];
+    }
+
     private static function getCurrentFooter(): ?string
     {
         $result = self::runCliCommand([

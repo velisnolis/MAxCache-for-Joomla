@@ -13,10 +13,20 @@ use Joomla\Database\DatabaseInterface;
 
 final class Pkg_MaxcacheInstallerScript extends InstallerScript
 {
+    private const BEGIN_MARKER = '# BEGIN MAx Cache for Joomla';
+    private const END_MARKER = '# END MAx Cache for Joomla';
+
     public function postflight(string $type, $parent): bool
     {
         $this->applyDetectedLanguageDefaults($type);
         $this->moveMaxcachePluginToLast();
+
+        return true;
+    }
+
+    public function uninstall($parent): bool
+    {
+        $this->removeManagedServerConfig();
 
         return true;
     }
@@ -152,5 +162,171 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         } catch (\Throwable $exception) {
             // Leave install/update successful even if ordering could not be adjusted.
         }
+    }
+
+    private function removeManagedServerConfig(): void
+    {
+        try {
+            if ($this->isAdminToolsAvailable()) {
+                $this->removeManagedBlockFromAdminToolsFooter();
+
+                return;
+            }
+
+            $this->removeManagedBlockFromHtaccess();
+        } catch (\Throwable $exception) {
+            // Uninstall should remain resilient even if cleanup fails.
+        }
+    }
+
+    private function removeManagedBlockFromAdminToolsFooter(): void
+    {
+        $currentFooter = $this->getAdminToolsFooter();
+
+        if ($currentFooter === null) {
+            return;
+        }
+
+        $updatedFooter = $this->removeManagedBlockFromText($currentFooter);
+
+        if ($updatedFooter === null) {
+            return;
+        }
+
+        $this->runCliCommand([
+            $this->getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:set',
+            '--key=custfoot',
+            '--value=' . $updatedFooter,
+        ]);
+
+        $this->runCliCommand([
+            $this->getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:make',
+        ]);
+    }
+
+    private function removeManagedBlockFromHtaccess(): void
+    {
+        $path = JPATH_ROOT . '/.htaccess';
+
+        if (!is_file($path)) {
+            return;
+        }
+
+        $current = (string) file_get_contents($path);
+        $updated = $this->removeManagedBlockFromText($current);
+
+        if ($updated === null) {
+            return;
+        }
+
+        file_put_contents($path, $updated);
+    }
+
+    private function removeManagedBlockFromText(string $contents): ?string
+    {
+        $pattern = '/' . preg_quote(self::BEGIN_MARKER, '/') . '.*?' . preg_quote(self::END_MARKER, '/') . '\n?/s';
+
+        if (!preg_match($pattern, $contents)) {
+            return null;
+        }
+
+        $updated = preg_replace($pattern, '', $contents, 1);
+        $updated = preg_replace("/\n{3,}/", "\n\n", (string) $updated);
+
+        return rtrim((string) $updated) . "\n";
+    }
+
+    private function isAdminToolsAvailable(): bool
+    {
+        return is_dir(JPATH_ADMINISTRATOR . '/components/com_admintools')
+            && is_file(JPATH_ROOT . '/cli/joomla.php');
+    }
+
+    private function getAdminToolsFooter(): ?string
+    {
+        $result = $this->runCliCommand([
+            $this->getPhpBinary(),
+            JPATH_ROOT . '/cli/joomla.php',
+            'admintools:htmaker:get',
+            '--option=custfoot',
+        ], true);
+
+        if (($result['exit_code'] ?? 1) !== 0) {
+            return null;
+        }
+
+        $payload = json_decode(trim((string) ($result['stdout'] ?? '')), true);
+
+        if (!is_array($payload) || !array_key_exists('custfoot', $payload)) {
+            return null;
+        }
+
+        return (string) $payload['custfoot'];
+    }
+
+    private function getPhpBinary(): string
+    {
+        foreach ([PHP_BINARY, '/usr/local/bin/php', '/usr/bin/php', '/opt/cpanel/ea-php84/root/usr/bin/php', 'php'] as $candidate) {
+            if (
+                $candidate === 'php'
+                || (
+                    is_string($candidate)
+                    && $candidate !== ''
+                    && is_executable($candidate)
+                    && !preg_match('#(?:php-cgi|lsphp|php-fpm)$#i', $candidate)
+                )
+            ) {
+                return $candidate;
+            }
+        }
+
+        return 'php';
+    }
+
+    private function runCliCommand(array $command, bool $allowFailure = false): array
+    {
+        if (!$this->canExecuteCommands()) {
+            return ['stdout' => '', 'stderr' => '', 'exit_code' => 1];
+        }
+
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = proc_open($command, $descriptorSpec, $pipes, JPATH_ROOT);
+
+        if (!is_resource($process)) {
+            return ['stdout' => '', 'stderr' => '', 'exit_code' => 1];
+        }
+
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0 && !$allowFailure) {
+            throw new \RuntimeException(trim((string) $stderr) !== '' ? trim((string) $stderr) : 'CLI command failed.');
+        }
+
+        return [
+            'stdout' => (string) $stdout,
+            'stderr' => (string) $stderr,
+            'exit_code' => (int) $exitCode,
+        ];
+    }
+
+    private function canExecuteCommands(): bool
+    {
+        $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+
+        return function_exists('proc_open') && !in_array('proc_open', $disabled, true);
     }
 }
