@@ -90,20 +90,9 @@ HTACCESS);
     private static function buildCachePublicPath(array $params): string
     {
         $cacheRoot = rtrim((string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache'), '/');
+        $publicPath = CachePathHelper::buildPublicPath($cacheRoot);
 
-        foreach (['/public_html/', '/htdocs/', '/www/'] as $marker) {
-            $position = strpos($cacheRoot, $marker);
-
-            if ($position === false) {
-                continue;
-            }
-
-            $suffix = trim(substr($cacheRoot, $position + strlen($marker)), '/');
-
-            return '/' . ($suffix === '' ? 'maxcache' : $suffix);
-        }
-
-        return $cacheRoot;
+        return $publicPath ?? '/maxcache';
     }
 
     private static function buildPublicPathRegex(string $path): string

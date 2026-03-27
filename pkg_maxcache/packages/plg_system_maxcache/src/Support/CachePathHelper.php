@@ -15,6 +15,14 @@ final class CachePathHelper
     {
         $cacheRoot = rtrim($cacheRoot, '/');
 
+        $siteRoot = \defined('JPATH_ROOT') ? rtrim((string) JPATH_ROOT, '/') : '';
+
+        if ($siteRoot !== '' && str_starts_with($cacheRoot, $siteRoot . '/')) {
+            $suffix = trim(substr($cacheRoot, strlen($siteRoot) + 1), '/');
+
+            return '/' . ($suffix === '' ? 'maxcache' : $suffix);
+        }
+
         foreach (['/public_html/', '/htdocs/', '/www/'] as $marker) {
             $position = strpos($cacheRoot, $marker);
 
