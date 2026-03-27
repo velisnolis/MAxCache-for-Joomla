@@ -24,6 +24,15 @@ final class PurgeIntegrationStatusField extends FormField
         $html = [];
         $html[] = '<div class="alert alert-info">';
 
+        if (!$status['cache_root_is_public']) {
+            $html[] = '<p><strong>Static Cache Root:</strong> the current value is not under the web root, so Regular Labs cannot purge it by public path.</p>';
+            $html[] = '<p>Recommended before activation: set <code>Static Cache Root</code> to <code>'
+                . htmlspecialchars((string) $status['recommended_cache_root'], ENT_QUOTES, 'UTF-8')
+                . '</code>. That will expose the public purge path <code>'
+                . htmlspecialchars((string) $status['recommended_path'], ENT_QUOTES, 'UTF-8')
+                . '</code>.</p>';
+        }
+
         if ($status['state'] === 'active') {
             $html[] = '<p><strong>Regular Labs Cache Cleaner:</strong> Active.</p>';
             $html[] = '<p>Recommended: add <code>' . htmlspecialchars((string) $status['recommended_path'], ENT_QUOTES, 'UTF-8') . '</code> to <strong>Custom Folders</strong> in Regular Labs Cache Cleaner and use that button for manual MAx Cache purges.</p>';

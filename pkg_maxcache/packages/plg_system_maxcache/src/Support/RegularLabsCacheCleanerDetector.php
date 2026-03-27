@@ -23,6 +23,8 @@ final class RegularLabsCacheCleanerDetector
             $extensions = self::loadExtensions($db);
             $modulePublished = self::isAdminModulePublished($db);
             $publicPath = CachePathHelper::buildPublicPath($cacheRoot);
+            $recommendedCacheRoot = CachePathHelper::recommendedCacheRoot();
+            $recommendedPublicPath = $publicPath ?? CachePathHelper::recommendedPublicPath();
 
             $regularLabsSystemEnabled = self::isEnabled($extensions, 'plugin', 'system', 'regularlabs');
             $cacheCleanerSystemEnabled = self::isEnabled($extensions, 'plugin', 'system', 'cachecleaner');
@@ -36,7 +38,9 @@ final class RegularLabsCacheCleanerDetector
                 'module_published' => $modulePublished,
                 'regularlabs_system_enabled' => $regularLabsSystemEnabled,
                 'cachecleaner_system_enabled' => $cacheCleanerSystemEnabled,
-                'recommended_path' => $publicPath,
+                'recommended_path' => $recommendedPublicPath,
+                'cache_root_is_public' => $publicPath !== null,
+                'recommended_cache_root' => $recommendedCacheRoot,
             ];
         } catch (\Throwable) {
             return [
@@ -45,7 +49,9 @@ final class RegularLabsCacheCleanerDetector
                 'module_published' => false,
                 'regularlabs_system_enabled' => false,
                 'cachecleaner_system_enabled' => false,
-                'recommended_path' => CachePathHelper::buildPublicPath($cacheRoot),
+                'recommended_path' => CachePathHelper::recommendedPublicPath(),
+                'cache_root_is_public' => CachePathHelper::buildPublicPath($cacheRoot) !== null,
+                'recommended_cache_root' => CachePathHelper::recommendedCacheRoot(),
             ];
         }
     }

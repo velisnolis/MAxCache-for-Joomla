@@ -11,7 +11,7 @@ namespace Vendor\Plugin\System\Maxcache\Support;
 
 final class CachePathHelper
 {
-    public static function buildPublicPath(string $cacheRoot): string
+    public static function buildPublicPath(string $cacheRoot): ?string
     {
         $cacheRoot = rtrim($cacheRoot, '/');
 
@@ -27,6 +27,16 @@ final class CachePathHelper
             return '/' . ($suffix === '' ? 'maxcache' : $suffix);
         }
 
-        return $cacheRoot;
+        return null;
+    }
+
+    public static function recommendedCacheRoot(): string
+    {
+        return rtrim(JPATH_ROOT, '/') . '/maxcache';
+    }
+
+    public static function recommendedPublicPath(): string
+    {
+        return self::buildPublicPath(self::recommendedCacheRoot()) ?? '/maxcache';
     }
 }

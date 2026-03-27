@@ -70,6 +70,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
 
             if ($this->shouldApplyDetectedDefaults($type, $plugin, $params)) {
                 $detected = $this->detectLanguageRoutingProfile($db);
+                $params['cache_root'] = $this->recommendedCacheRoot();
                 $params['path_mode'] = $detected['recommended_path_mode'];
                 $params['vary_language'] = $detected['recommended_vary_language'];
                 $params['autodetected_language_routing'] = $detected['state'];
@@ -127,7 +128,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
             return false;
         }
 
-        if ($cacheRoot !== '/var/cache/joomla-maxcache') {
+        if (!\in_array($cacheRoot, ['/var/cache/joomla-maxcache', $this->recommendedCacheRoot()], true)) {
             return false;
         }
 
@@ -140,6 +141,11 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         }
 
         return empty($excludeMenuItems);
+    }
+
+    private function recommendedCacheRoot(): string
+    {
+        return rtrim(JPATH_ROOT, '/') . '/maxcache';
     }
 
     private function detectLanguageRoutingProfile(DatabaseInterface $db): array
