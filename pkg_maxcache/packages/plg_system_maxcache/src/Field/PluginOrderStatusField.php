@@ -25,6 +25,12 @@ final class PluginOrderStatusField extends FormField
             return '<div class="alert alert-secondary">Plugin ordering status could not be determined.</div>';
         }
 
+        if (!$status['enabled']) {
+            return '<div class="alert alert-secondary">'
+                . '<strong>Plugin ordering:</strong> MAx Cache is currently disabled. Enable it first, then set <code>Ordering</code> to <code>- Last -</code> if needed.'
+                . '</div>';
+        }
+
         if ($status['is_last']) {
             return '<div class="alert alert-success">'
                 . '<strong>Plugin ordering:</strong> MAx Cache is currently the last enabled system plugin.'
@@ -52,7 +58,7 @@ final class PluginOrderStatusField extends FormField
             }
 
             $query = $db->getQuery(true)
-                ->select([$db->quoteName('extension_id'), $db->quoteName('name'), $db->quoteName('ordering')])
+                ->select([$db->quoteName('extension_id'), $db->quoteName('name'), $db->quoteName('ordering'), $db->quoteName('enabled')])
                 ->from($db->quoteName('#__extensions'))
                 ->where($db->quoteName('extension_id') . ' = ' . $extensionId);
 
@@ -79,6 +85,7 @@ final class PluginOrderStatusField extends FormField
             }
 
             return [
+                'enabled' => (int) $current['enabled'] === 1,
                 'is_last' => (int) $current['extension_id'] === (int) $last['extension_id'],
             ];
         } catch (\Throwable $exception) {

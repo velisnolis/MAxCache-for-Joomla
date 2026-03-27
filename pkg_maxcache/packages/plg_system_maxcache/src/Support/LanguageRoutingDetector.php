@@ -8,6 +8,7 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Factory;
+use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
 
 \defined('_JEXEC') or die;
@@ -66,6 +67,15 @@ final class LanguageRoutingDetector
                 ];
             }
 
+            if ($languageFilterEnabled && $publishedLanguages > 1 && self::frontendRedirectShowsLanguagePrefix()) {
+                return [
+                    'state' => 'prefixed',
+                    'recommended_path_mode' => 'host-language-sef',
+                    'recommended_vary_language' => 1,
+                    'message' => 'Language Filter is enabled and the frontend redirects into a language-prefixed URL structure. Host + Language + SEF Path is the recommended default.',
+                ];
+            }
+
             if ($languageFilterEnabled && $publishedLanguages > 1) {
                 return [
                     'state' => 'multilingual_hidden',
@@ -89,5 +99,94 @@ final class LanguageRoutingDetector
                 'message' => 'Language URL structure could not be detected. Host + SEF Path is the safer default until you confirm language-prefixed URLs are in use.',
             ];
         }
+    }
+
+    private static function frontendRedirectShowsLanguagePrefix(): bool
+    {
+        $frontendRoot = preg_replace('#/administrator/?$#', '/', Uri::base());
+
+        if (!\is_string($frontendRoot) || $frontendRoot === '') {
+            return false;
+        }
+
+        $headers = self::fetchHeaders($frontendRoot);
+
+        if ($headers === []) {
+            return false;
+        }
+
+        foreach ($headers as $name => $value) {
+            if (strtolower((string) $name) !== 'location') {
+                continue;
+            }
+
+            foreach ((array) $value as $candidate) {
+                $path = (string) parse_url((string) $candidate, PHP_URL_PATH);
+
+                if (preg_match('#^/[a-z]{2}(?:-[a-z]{2})?(/|$)#i', $path)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static function fetchHeaders(string $url): array
+    {
+        if (\function_exists('curl_init')) {
+            $ch = curl_init($url);
+
+            if ($ch !== false) {
+                curl_setopt_array($ch, [
+                    CURLOPT_NOBODY => true,
+                    CURLOPT_HEADER => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => false,
+                    CURLOPT_TIMEOUT => 5,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                ]);
+
+                $raw = curl_exec($ch);
+
+                if (\is_string($raw) && $raw !== '') {
+                    curl_close($ch);
+
+                    return self::parseRawHeaders($raw);
+                }
+
+                curl_close($ch);
+            }
+        }
+
+        $result = @get_headers($url, true);
+
+        return \is_array($result) ? $result : [];
+    }
+
+    private static function parseRawHeaders(string $raw): array
+    {
+        $headers = [];
+        $lines = preg_split("/\r\n|\n|\r/", trim($raw)) ?: [];
+
+        foreach ($lines as $line) {
+            if (!str_contains($line, ':')) {
+                continue;
+            }
+
+            [$name, $value] = explode(':', $line, 2);
+            $name = trim($name);
+            $value = trim($value);
+
+            if (isset($headers[$name])) {
+                $headers[$name] = array_merge((array) $headers[$name], [$value]);
+            } else {
+                $headers[$name] = $value;
+            }
+        }
+
+        return $headers;
     }
 }

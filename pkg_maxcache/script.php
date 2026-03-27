@@ -15,6 +15,11 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
 {
     private const BEGIN_MARKER = '# BEGIN MAx Cache for Joomla';
     private const END_MARKER = '# END MAx Cache for Joomla';
+    private const MOD_MAXCACHE_MODULE_PATHS = [
+        '/etc/apache2/modules/mod_maxcache.so',
+        '/usr/lib64/apache2/modules/mod_maxcache.so',
+        '/usr/lib64/httpd/modules/mod_maxcache.so',
+    ];
 
     public function postflight(string $type, $parent): bool
     {
@@ -33,7 +38,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
 
     private function applyDetectedLanguageDefaults(string $type): void
     {
-        if ($type !== 'install') {
+        if (!\in_array($type, ['install', 'update'], true)) {
             return;
         }
 
@@ -42,7 +47,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
             $db = Factory::getContainer()->get(DatabaseInterface::class);
 
             $query = $db->getQuery(true)
-                ->select([$db->quoteName('extension_id'), $db->quoteName('params')])
+                ->select([$db->quoteName('extension_id'), $db->quoteName('params'), $db->quoteName('enabled')])
                 ->from($db->quoteName('#__extensions'))
                 ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
                 ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
@@ -61,16 +66,55 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
                 $params = [];
             }
 
+            if (!$this->shouldApplyDetectedDefaults($type, $plugin, $params)) {
+                return;
+            }
+
             $detected = $this->detectLanguageRoutingProfile($db);
             $params['path_mode'] = $detected['recommended_path_mode'];
             $params['vary_language'] = $detected['recommended_vary_language'];
             $params['autodetected_language_routing'] = $detected['state'];
+            $params['server_snippet_mode'] = $this->detectModMaxcacheAvailability() ? 'mod_maxcache' : 'apache';
 
             $plugin->params = json_encode($params, JSON_UNESCAPED_SLASHES);
             $db->updateObject('#__extensions', $plugin, 'extension_id');
         } catch (\Throwable $exception) {
             // Keep installation resilient if defaults could not be inferred.
         }
+    }
+
+    private function shouldApplyDetectedDefaults(string $type, object $plugin, array $params): bool
+    {
+        if ($type === 'install') {
+            return true;
+        }
+
+        $cacheRoot = (string) ($params['cache_root'] ?? '/var/cache/joomla-maxcache');
+        $pathMode = (string) ($params['path_mode'] ?? 'host-sef');
+        $varyLanguage = (int) ($params['vary_language'] ?? 0);
+        $snippetMode = (string) ($params['server_snippet_mode'] ?? 'apache');
+        $siteHosts = trim((string) ($params['site_hosts'] ?? ''));
+        $exclude = trim((string) ($params['exclude'] ?? ''));
+        $excludeMenuItems = $params['exclude_menu_items'] ?? [];
+        $enabled = (int) ($plugin->enabled ?? 0) === 1;
+
+        if ($enabled) {
+            return false;
+        }
+
+        if ($cacheRoot !== '/var/cache/joomla-maxcache') {
+            return false;
+        }
+
+        if ($pathMode !== 'host-sef' || $varyLanguage !== 0 || $snippetMode !== 'apache') {
+            return false;
+        }
+
+        if ($siteHosts !== '' || $exclude !== '') {
+            return false;
+        }
+
+        return empty($excludeMenuItems);
     }
 
     private function detectLanguageRoutingProfile(DatabaseInterface $db): array
@@ -110,6 +154,14 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
                     'recommended_vary_language' => 1,
                 ];
             }
+        }
+
+        if ($languageFilterEnabled && $publishedLanguages > 1 && $this->frontendRedirectShowsLanguagePrefix()) {
+            return [
+                'state' => 'prefixed',
+                'recommended_path_mode' => 'host-language-sef',
+                'recommended_vary_language' => 1,
+            ];
         }
 
         if ($languageFilterEnabled && $publishedLanguages > 1) {
@@ -162,6 +214,118 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         } catch (\Throwable $exception) {
             // Leave install/update successful even if ordering could not be adjusted.
         }
+    }
+
+    private function frontendRedirectShowsLanguagePrefix(): bool
+    {
+        $url = $this->getFrontendRootUrl();
+
+        if ($url === null) {
+            return false;
+        }
+
+        $headers = $this->fetchHeaders($url);
+
+        if ($headers === []) {
+            return false;
+        }
+
+        foreach ($headers as $name => $value) {
+            if (strtolower((string) $name) !== 'location') {
+                continue;
+            }
+
+            foreach ((array) $value as $candidate) {
+                $path = (string) parse_url((string) $candidate, PHP_URL_PATH);
+
+                if ((bool) preg_match('#^/[a-z]{2}(?:-[a-z]{2})?(/|$)#i', $path)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function getFrontendRootUrl(): ?string
+    {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+
+        if ($host === '') {
+            return null;
+        }
+
+        return $scheme . '://' . $host . '/';
+    }
+
+    private function fetchHeaders(string $url): array
+    {
+        if (\function_exists('curl_init')) {
+            $ch = curl_init($url);
+
+            if ($ch !== false) {
+                curl_setopt_array($ch, [
+                    CURLOPT_NOBODY => true,
+                    CURLOPT_HEADER => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => false,
+                    CURLOPT_TIMEOUT => 5,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                ]);
+
+                $raw = curl_exec($ch);
+
+                if (\is_string($raw) && $raw !== '') {
+                    curl_close($ch);
+
+                    return $this->parseRawHeaders($raw);
+                }
+
+                curl_close($ch);
+            }
+        }
+
+        $result = @get_headers($url, true);
+
+        return \is_array($result) ? $result : [];
+    }
+
+    private function parseRawHeaders(string $raw): array
+    {
+        $headers = [];
+        $lines = preg_split("/\r\n|\n|\r/", trim($raw)) ?: [];
+
+        foreach ($lines as $line) {
+            if (!str_contains($line, ':')) {
+                continue;
+            }
+
+            [$name, $value] = explode(':', $line, 2);
+            $name = trim($name);
+            $value = trim($value);
+
+            if (isset($headers[$name])) {
+                $headers[$name] = array_merge((array) $headers[$name], [$value]);
+            } else {
+                $headers[$name] = $value;
+            }
+        }
+
+        return $headers;
+    }
+
+    private function detectModMaxcacheAvailability(): bool
+    {
+        foreach (self::MOD_MAXCACHE_MODULE_PATHS as $path) {
+            if (is_readable($path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function removeManagedServerConfig(): void
