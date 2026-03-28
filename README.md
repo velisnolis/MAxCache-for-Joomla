@@ -27,6 +27,21 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.27
+
+- full purge automation controls:
+  - regenerate after Joomla save
+  - regenerate on interval
+- direct integration with Regular Labs Cache Cleaner:
+  - save + integrate from the MAx Cache settings page
+  - automatically add `maxcache` to Cache Cleaner custom folders
+  - copy MAx Cache full-regeneration settings into Cache Cleaner
+- more accurate Regular Labs detection:
+  - only reports Cache Cleaner when the extension is actually installed
+- admin form fixes:
+  - fixed broken inline JavaScript in `Site Hosts`
+  - hide full-regeneration controls when purge strategy is `Targeted`
+
 ## Repository Layout
 
 - `pkg_maxcache/`: Joomla package source

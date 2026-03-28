@@ -27,6 +27,7 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\SubscriberInterface;
+use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
@@ -70,6 +71,8 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         if ($this->handleAdminHtaccessAction()) {
             return;
         }
+
+        $this->handleScheduledFullRegeneration();
 
         $this->resetRequestState();
         $this->importPagecachePlugins();
@@ -242,6 +245,14 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         if ($this->params->get('purge_strategy', 'targeted') === 'full') {
+            if ($this->usesRegularLabsAutomation()) {
+                return;
+            }
+
+            if (!(int) $this->params->get('full_regenerate_on_save', 1)) {
+                return;
+            }
+
             $this->purgeAll();
             return;
         }
@@ -278,16 +289,21 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         if (
             !$app->isClient('administrator')
-            || !\in_array($input->getCmd('maxcache_action'), ['apply_snippet', 'purge_cache'], true)
+            || !\in_array($input->getCmd('maxcache_action'), ['apply_snippet', 'purge_cache', 'enable_regularlabs', 'disable_regularlabs'], true)
         ) {
             return false;
         }
 
-        if (!Session::checkToken()) {
+        $action = $input->getCmd('maxcache_action');
+        $hasValidToken = \in_array($action, ['enable_regularlabs', 'disable_regularlabs'], true)
+            ? (Session::checkToken('post') || Session::checkToken('get'))
+            : Session::checkToken('post');
+
+        if (!$hasValidToken) {
             throw new \RuntimeException(Text::_('JINVALID_TOKEN'));
         }
 
-        if ($input->getCmd('maxcache_action') === 'purge_cache') {
+        if ($action === 'purge_cache') {
             $this->purgeAll();
 
             $message = 'MAx Cache static cache was fully purged.';
@@ -298,6 +314,45 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             ]);
             $app->enqueueMessage($message, 'message');
             $app->redirect($this->getAdminReturnUrl());
+            $app->close();
+
+            return true;
+        }
+
+        if (\in_array($action, ['enable_regularlabs', 'disable_regularlabs'], true)) {
+            $status = RegularLabsCacheCleanerDetector::detect(
+                (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache')
+            );
+
+            if ($action === 'enable_regularlabs') {
+                if (($status['state'] ?? 'unknown') !== 'active' || !($status['cache_root_is_public'] ?? false)) {
+                    $app->enqueueMessage(
+                        'Regular Labs integration can only be enabled when Cache Cleaner is active and the static cache root is inside the public web root.',
+                        'warning'
+                    );
+                } else {
+                    $this->configureRegularLabsCacheCleaner($status);
+                    $this->updatePluginParams([
+                        'purge_automation_driver' => 'regularlabs',
+                        'full_regenerate_on_save' => 0,
+                        'full_regenerate_on_interval' => 0,
+                    ]);
+                    $app->enqueueMessage(
+                        'MAx Cache now delegates full regeneration to Regular Labs Cache Cleaner. The MAx Cache folder was added to Cache Cleaner custom folders and the current MAx Cache save/interval settings were copied over.',
+                        'message'
+                    );
+                }
+            } else {
+                $this->updatePluginParams([
+                    'purge_automation_driver' => 'maxcache',
+                ]);
+                $app->enqueueMessage(
+                    'MAx Cache full regeneration is managed by MAx Cache again.',
+                    'message'
+                );
+            }
+
+            $app->redirect(Route::_('index.php?option=com_plugins&task=plugin.edit&extension_id=' . $input->getInt('extension_id'), false));
             $app->close();
 
             return true;
@@ -766,6 +821,152 @@ HTML;
         if ($root !== '' && self::isSafeCacheRoot($root) && Folder::exists($root)) {
             Folder::delete($root);
         }
+
+        $this->touchFullPurgeMarker();
+    }
+
+    private function handleScheduledFullRegeneration(): void
+    {
+        if ((string) $this->params->get('purge_strategy', 'targeted') !== 'full') {
+            return;
+        }
+
+        if ($this->usesRegularLabsAutomation()) {
+            return;
+        }
+
+        if (!(int) $this->params->get('full_regenerate_on_interval', 0)) {
+            return;
+        }
+
+        $interval = max(60, (int) $this->params->get('full_regenerate_interval_seconds', 3600));
+        $markerPath = $this->getFullPurgeMarkerPath();
+        $lastRun = is_file($markerPath) ? (int) @file_get_contents($markerPath) : 0;
+
+        if ($lastRun <= 0) {
+            $this->touchFullPurgeMarker(time());
+            return;
+        }
+
+        if ((time() - $lastRun) < $interval) {
+            return;
+        }
+
+        $this->purgeAll();
+    }
+
+    private function usesRegularLabsAutomation(): bool
+    {
+        if ((string) $this->params->get('purge_automation_driver', 'maxcache') !== 'regularlabs') {
+            return false;
+        }
+
+        $status = RegularLabsCacheCleanerDetector::detect(
+            (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache')
+        );
+
+        return ($status['state'] ?? 'unknown') === 'active' && (bool) ($status['cache_root_is_public'] ?? false);
+    }
+
+    private function getFullPurgeMarkerPath(): string
+    {
+        return rtrim((string) JPATH_CACHE, '/') . '/plg_system_maxcache_full_purge.timestamp';
+    }
+
+    private function touchFullPurgeMarker(?int $timestamp = null): void
+    {
+        $timestamp ??= time();
+        @file_put_contents($this->getFullPurgeMarkerPath(), (string) $timestamp, LOCK_EX);
+    }
+
+    private function updatePluginParams(array $overrides): void
+    {
+        /** @var DatabaseInterface $db */
+        $db = Factory::getContainer()->get(DatabaseInterface::class);
+        $extensionId = $this->getOwnExtensionId($db);
+
+        if ($extensionId <= 0) {
+            throw new \RuntimeException('Could not determine the MAx Cache extension id.');
+        }
+
+        $registry = new Registry($this->params->toArray());
+
+        foreach ($overrides as $key => $value) {
+            $registry->set((string) $key, $value);
+        }
+
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__extensions'))
+            ->set($db->quoteName('params') . ' = ' . $db->quote((string) $registry))
+            ->where($db->quoteName('extension_id') . ' = ' . (int) $extensionId);
+
+        $db->setQuery($query);
+        $db->execute();
+        $this->params = $registry;
+    }
+
+    private function configureRegularLabsCacheCleaner(array $status): void
+    {
+        /** @var DatabaseInterface $db */
+        $db = Factory::getContainer()->get(DatabaseInterface::class);
+
+        $query = $db->getQuery(true)
+            ->select([$db->quoteName('extension_id'), $db->quoteName('params')])
+            ->from($db->quoteName('#__extensions'))
+            ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+            ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
+            ->where($db->quoteName('element') . ' = ' . $db->quote('cachecleaner'));
+
+        $db->setQuery($query);
+        $row = $db->loadAssoc();
+
+        if (!$row || empty($row['extension_id'])) {
+            throw new \RuntimeException('Could not locate the Regular Labs Cache Cleaner plugin.');
+        }
+
+        $cacheCleanerParams = new Registry((string) ($row['params'] ?? '{}'));
+        $relativeFolder = ltrim((string) ($status['recommended_path'] ?? '/maxcache'), '/');
+        $folders = $this->normalizeLineList((string) $cacheCleanerParams->get('clean_folders_selection', ''));
+
+        if ($relativeFolder !== '' && !\in_array($relativeFolder, $folders, true)) {
+            $folders[] = $relativeFolder;
+        }
+
+        $cacheCleanerParams->set('clean_folders', 1);
+        $cacheCleanerParams->set('clean_folders_selection', implode("\n", $folders));
+        $cacheCleanerParams->set('clean_folders_min_age', 0);
+        $cacheCleanerParams->set('auto_save_admin', (int) $this->params->get('full_regenerate_on_save', 1));
+        $cacheCleanerParams->set('auto_save_admin_msg', 0);
+        $cacheCleanerParams->set('auto_save_front', 0);
+        $cacheCleanerParams->set('auto_save_front_msg', 0);
+        $cacheCleanerParams->set('auto_interval_admin', (int) $this->params->get('full_regenerate_on_interval', 0));
+        $cacheCleanerParams->set(
+            'auto_interval_admin_secs',
+            max(60, (int) $this->params->get('full_regenerate_interval_seconds', 3600))
+        );
+        $cacheCleanerParams->set('auto_interval_admin_msg', 0);
+
+        $update = $db->getQuery(true)
+            ->update($db->quoteName('#__extensions'))
+            ->set($db->quoteName('params') . ' = ' . $db->quote((string) $cacheCleanerParams))
+            ->where($db->quoteName('extension_id') . ' = ' . (int) $row['extension_id']);
+
+        $db->setQuery($update);
+        $db->execute();
+    }
+
+    private function getOwnExtensionId(DatabaseInterface $db): int
+    {
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('extension_id'))
+            ->from($db->quoteName('#__extensions'))
+            ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+            ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
+            ->where($db->quoteName('element') . ' = ' . $db->quote('maxcache'));
+
+        $db->setQuery($query);
+
+        return (int) $db->loadResult();
     }
 
     private static function isSafeCacheRoot(string $path): bool

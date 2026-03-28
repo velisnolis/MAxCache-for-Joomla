@@ -28,15 +28,18 @@ final class RegularLabsCacheCleanerDetector
 
             $regularLabsSystemEnabled = self::isEnabled($extensions, 'plugin', 'system', 'regularlabs');
             $cacheCleanerSystemEnabled = self::isEnabled($extensions, 'plugin', 'system', 'cachecleaner');
+            $cacheCleanerSystemInstalled = self::isInstalled($extensions, 'plugin', 'system', 'cachecleaner');
             $moduleInstalled = self::isInstalled($extensions, 'module', '', 'mod_cachecleaner');
 
             $active = $regularLabsSystemEnabled && $cacheCleanerSystemEnabled && $modulePublished;
+            $cacheCleanerDetected = $moduleInstalled || $cacheCleanerSystemInstalled;
 
             return [
-                'state' => $active ? 'active' : (($moduleInstalled || $regularLabsSystemEnabled || $cacheCleanerSystemEnabled) ? 'detected_inactive' : 'not_detected'),
+                'state' => $active ? 'active' : ($cacheCleanerDetected ? 'detected_inactive' : 'not_detected'),
                 'module_installed' => $moduleInstalled,
                 'module_published' => $modulePublished,
                 'regularlabs_system_enabled' => $regularLabsSystemEnabled,
+                'cachecleaner_system_installed' => $cacheCleanerSystemInstalled,
                 'cachecleaner_system_enabled' => $cacheCleanerSystemEnabled,
                 'recommended_path' => $recommendedPublicPath,
                 'cache_root_is_public' => $publicPath !== null,
@@ -48,6 +51,7 @@ final class RegularLabsCacheCleanerDetector
                 'module_installed' => false,
                 'module_published' => false,
                 'regularlabs_system_enabled' => false,
+                'cachecleaner_system_installed' => false,
                 'cachecleaner_system_enabled' => false,
                 'recommended_path' => CachePathHelper::recommendedPublicPath(),
                 'cache_root_is_public' => CachePathHelper::buildPublicPath($cacheRoot) !== null,

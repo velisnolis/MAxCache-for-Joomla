@@ -25,13 +25,14 @@ final class SiteHostsField extends FormField
         $detectedHosts = SiteHostDetector::detect($current);
         $displayValue = $current !== '' ? $current : implode("\n", $detectedHosts);
         $escapedValue = htmlspecialchars($displayValue, ENT_QUOTES, 'UTF-8');
+        $jsonId = json_encode($id, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
         $jsonHosts = json_encode(implode("\n", $detectedHosts), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
 
         return <<<HTML
 <textarea name="{$name}" id="{$id}" class="form-control" rows="{$rows}">{$escapedValue}</textarea>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const field = document.getElementById({json_encode($id)});
+    const field = document.getElementById({$jsonId});
     const enabledField = document.querySelector('select[name="jform[enabled]"], select[name="enabled"], [name$="[enabled]"]');
 
     if (!field || !enabledField || String(enabledField.value) !== '0') {
