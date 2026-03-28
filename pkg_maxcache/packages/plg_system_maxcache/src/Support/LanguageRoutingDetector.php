@@ -145,8 +145,9 @@ final class LanguageRoutingDetector
                     CURLOPT_FOLLOWLOCATION => false,
                     CURLOPT_TIMEOUT => 5,
                     CURLOPT_CONNECTTIMEOUT => 3,
-                    CURLOPT_SSL_VERIFYPEER => false,
-                    CURLOPT_SSL_VERIFYHOST => false,
+                    CURLOPT_SSL_VERIFYPEER => true,
+                    CURLOPT_SSL_VERIFYHOST => 2,
+                    CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
                 ]);
 
                 $raw = curl_exec($ch);
@@ -161,7 +162,8 @@ final class LanguageRoutingDetector
             }
         }
 
-        $result = @get_headers($url, true);
+        $context = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
+        $result = @get_headers($url, true, $context);
 
         return \is_array($result) ? $result : [];
     }

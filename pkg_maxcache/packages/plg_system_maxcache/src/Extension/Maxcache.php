@@ -763,9 +763,30 @@ HTML;
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
 
-        if ($root !== '' && Folder::exists($root)) {
+        if ($root !== '' && self::isSafeCacheRoot($root) && Folder::exists($root)) {
             Folder::delete($root);
         }
+    }
+
+    private static function isSafeCacheRoot(string $path): bool
+    {
+        $real = realpath($path);
+
+        if ($real === false) {
+            return true;
+        }
+
+        $dangerous = ['/', '/tmp', '/var', '/etc', '/home', '/root', '/usr', '/bin', '/sbin', '/opt', '/boot', '/dev', '/proc', '/sys', '/run', '/var/log'];
+
+        if (\in_array($real, $dangerous, true)) {
+            return false;
+        }
+
+        if (\defined('JPATH_ROOT') && $real === realpath(JPATH_ROOT)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function purgeAlias(string $alias): void
