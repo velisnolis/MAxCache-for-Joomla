@@ -3,3 +3,5 @@
 pkg_maxcache/packages/*.zip
 pkg_maxcache-*.zip
 *.bak
+.DS_Store
+ADVERSARIAL-REVIEW.md
