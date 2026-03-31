@@ -436,8 +436,19 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     private function shouldRenderAdminPurgeButton(): bool
     {
         $app = $this->getApplication();
+        $input = $app->getInput();
 
         if (!$app->isClient('administrator')) {
+            return false;
+        }
+
+        $identity = $app->getIdentity();
+
+        if (!$identity || $identity->guest) {
+            return false;
+        }
+
+        if ($input->getCmd('option') === 'com_login') {
             return false;
         }
 
