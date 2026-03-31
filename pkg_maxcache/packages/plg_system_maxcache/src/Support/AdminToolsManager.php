@@ -8,6 +8,7 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Date\Date;
+use Joomla\CMS\Factory;
 
 \defined('_JEXEC') or die;
 
@@ -112,7 +113,7 @@ final class AdminToolsManager
         }
 
         self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:set',
             '--key=' . self::OPTION_KEY,
@@ -122,7 +123,7 @@ final class AdminToolsManager
         self::ensurePublicCachePathException($cacheRoot);
 
         self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:make',
         ]);
@@ -180,7 +181,7 @@ final class AdminToolsManager
 
         if ($updatedFooter !== null) {
             self::runCliCommand([
-                self::getPhpBinary(),
+                ...self::getPhpCommand(),
                 JPATH_ROOT . '/cli/joomla.php',
                 'admintools:htmaker:set',
                 '--key=' . self::OPTION_KEY,
@@ -191,7 +192,7 @@ final class AdminToolsManager
         self::removePublicCachePathException($cacheRoot);
 
         self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:make',
         ]);
@@ -207,7 +208,7 @@ final class AdminToolsManager
     private static function getCurrentFooter(): ?string
     {
         $result = self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:get',
             '--option=' . self::OPTION_KEY,
@@ -232,7 +233,7 @@ final class AdminToolsManager
     private static function getCurrentExceptionDirs(): array
     {
         $result = self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:get',
             '--option=' . self::EXCEPTION_DIRS_KEY,
@@ -291,7 +292,7 @@ final class AdminToolsManager
         }
 
         self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:set',
             '--key=' . self::EXCEPTION_DIRS_KEY,
@@ -308,7 +309,7 @@ final class AdminToolsManager
         }
 
         self::runCliCommand([
-            self::getPhpBinary(),
+            ...self::getPhpCommand(),
             JPATH_ROOT . '/cli/joomla.php',
             'admintools:htmaker:set',
             '--key=' . self::EXCEPTION_DIRS_KEY,
@@ -316,7 +317,16 @@ final class AdminToolsManager
         ], true);
     }
 
-    private static function getPhpBinary(): string
+    /**
+     * Build the PHP command used for Joomla CLI calls.
+     *
+     * On some hosts Joomla uses APCu for web requests but disables it for CLI.
+     * In that case `cli/joomla.php` crashes during bootstrap unless APCu is
+     * explicitly enabled for the spawned process.
+     *
+     * @return string[]
+     */
+    private static function getPhpCommand(): array
     {
         $candidates = [];
 
@@ -339,11 +349,25 @@ final class AdminToolsManager
                     && !preg_match('#(?:php-cgi|lsphp|php-fpm)$#i', $candidate)
                 )
             ) {
-                return $candidate;
+                $command = [$candidate];
+
+                if ((string) Factory::getConfig()->get('cache_handler') === 'apcu') {
+                    $command[] = '-d';
+                    $command[] = 'apc.enable_cli=1';
+                }
+
+                return $command;
             }
         }
 
-        return 'php';
+        $command = ['php'];
+
+        if ((string) Factory::getConfig()->get('cache_handler') === 'apcu') {
+            $command[] = '-d';
+            $command[] = 'apc.enable_cli=1';
+        }
+
+        return $command;
     }
 
     private static function runCliCommand(array $command, bool $allowFailure = false): array

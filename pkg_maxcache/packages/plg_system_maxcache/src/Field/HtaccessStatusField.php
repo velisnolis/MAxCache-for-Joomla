@@ -48,6 +48,15 @@ final class HtaccessStatusField extends FormField
         };
 
         $html = [];
+        $guestSessionWarning = $this->getGuestSessionTrackingWarning();
+
+        if ($guestSessionWarning !== null) {
+            $html[] = '<div class="alert alert-danger">';
+            $html[] = '<p><strong>Guest-page caching warning:</strong> ' . htmlspecialchars($guestSessionWarning, ENT_QUOTES, 'UTF-8') . '</p>';
+            $html[] = '<p><strong>Action needed:</strong> Disable <code>Guest Session Tracking</code> in Joomla Global Configuration if you want MAx Cache to serve static cache consistently to anonymous visitors.</p>';
+            $html[] = '</div>';
+        }
+
         $html[] = '<div class="alert alert-info">';
         $html[] = '<p><strong>mod_maxcache:</strong> ' . htmlspecialchars($this->buildModMaxcacheMessage($modMaxcache), ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>Apply target:</strong> ' . htmlspecialchars($adminToolsAvailable ? 'Akeeba Admin Tools custom footer + .htaccess rebuild' : 'Direct .htaccess managed block', ENT_QUOTES, 'UTF-8') . '</p>';
@@ -95,5 +104,25 @@ final class HtaccessStatusField extends FormField
             'not_detected' => 'Not detected from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
             default => 'Could not be verified from Joomla. Use Apache Rewrite unless your host confirms CloudLinux mod_maxcache is enabled.',
         };
+    }
+
+    private function getGuestSessionTrackingWarning(): ?string
+    {
+        try {
+            $config = Factory::getConfig();
+
+            if (!(int) $config->get('session_metadata_for_guest', 0)) {
+                return null;
+            }
+
+            $sessionName = (string) Factory::getApplication()->getSession()->getName();
+            $cookieLabel = $sessionName !== '' ? ' (' . $sessionName . ')' : '';
+
+            return 'Joomla guest session tracking is enabled in Global Configuration. Anonymous visitors may receive the Joomla session cookie'
+                . $cookieLabel
+                . ', and MAx Cache will bypass those requests. Disable guest session tracking if you want full guest-page caching.';
+        } catch (\Throwable $exception) {
+            return null;
+        }
     }
 }

@@ -27,6 +27,15 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.28
+
+- Admin Tools compatibility fix:
+  - Joomla CLI calls now enable `apc.enable_cli=1` automatically when the site uses `apcu`
+  - this fixes Admin Tools snippet apply/read failures on hosts where APCu is disabled for CLI
+- guest session tracking warning:
+  - adds a prominent warning when Joomla `Guest Session Tracking` is enabled
+  - repeats the warning after `Apply snippet` so guest-cache bypasses are harder to miss
+
 ## New in 0.1.27
 
 - full purge automation controls:

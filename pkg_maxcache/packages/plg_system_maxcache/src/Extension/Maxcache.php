@@ -411,6 +411,12 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                 'time' => time(),
             ]);
             $app->enqueueMessage($message, 'message');
+
+            $guestSessionWarning = $this->getGuestSessionTrackingWarning();
+
+            if ($guestSessionWarning !== null) {
+                $app->enqueueMessage($guestSessionWarning, 'warning');
+            }
         } catch (\Throwable $exception) {
             $message = 'Could not apply the MAx Cache snippet: ' . $exception->getMessage();
             $app->setUserState('plg_system_maxcache.last_apply_result', [
@@ -1130,6 +1136,24 @@ HTML;
         $lines = array_map('trim', explode("\n", $value));
 
         return array_values(array_filter($lines, static fn (string $line): bool => $line !== ''));
+    }
+
+    private function getGuestSessionTrackingWarning(): ?string
+    {
+        try {
+            if (!(int) Factory::getConfig()->get('session_metadata_for_guest', 0)) {
+                return null;
+            }
+
+            $sessionName = (string) $this->getApplication()->getSession()->getName();
+            $cookieLabel = $sessionName !== '' ? ' (' . $sessionName . ')' : '';
+
+            return 'Guest Session Tracking is enabled in Joomla Global Configuration. Anonymous visitors may receive the Joomla session cookie'
+                . $cookieLabel
+                . ', and MAx Cache will bypass those requests until guest session tracking is disabled.';
+        } catch (\Throwable $exception) {
+            return null;
+        }
     }
 
     private function markRejected(string $reason): void
