@@ -27,6 +27,21 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.31
+
+- prefixed language cache paths:
+  - fixes duplicated language prefixes in generated paths such as `/cat/cat/llet`
+  - shares language-routing detection between runtime and installer recommendations
+  - adds local tests for real `/cat/`, `/esp/`, and `/ca/` URL cases
+- admin and operations:
+  - warns when Joomla `System - Cache` is enabled and can serve pages before MAx Cache
+  - caches the admin snippet-status check briefly to avoid Admin Tools CLI shell-outs on every admin render
+  - requests Joomla cache cleaning when purging MAx Cache or saving MAx Cache configuration
+- invalidation and hardening:
+  - purges stale static files on content/menu state changes and deletes, not only saves
+  - writes static artifacts and managed `.htaccess` changes atomically
+  - reports invalid exclusion regex patterns and skips them at runtime/snippet generation
+
 ## New in 0.1.30
 
 - admin purge button:
