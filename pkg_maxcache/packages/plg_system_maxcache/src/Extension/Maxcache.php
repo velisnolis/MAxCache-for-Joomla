@@ -466,12 +466,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return false;
         }
 
-        $snippet = $this->buildCurrentSnippet();
-        $status = AdminToolsManager::isAvailable()
-            ? AdminToolsManager::getStatus($snippet)
-            : HtaccessManager::getStatus($snippet);
-
-        return \in_array($status['state'] ?? 'not_applied', ['applied', 'outdated'], true);
+        return true;
     }
 
     private function injectAdminPurgeButton(): void
@@ -490,6 +485,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             ENT_QUOTES,
             'UTF-8'
         );
+        $snippetWarning = $this->getSnippetApplyWarning();
+        $warningTitle = $snippetWarning !== null
+            ? htmlspecialchars($snippetWarning, ENT_QUOTES, 'UTF-8')
+            : '';
+        $headerWarning = $snippetWarning !== null
+            ? '<span class="badge bg-warning text-dark ms-1" title="' . $warningTitle . '">!</span>'
+            : '';
+        $buttonClass = $snippetWarning !== null ? 'btn btn-warning' : 'btn btn-danger';
+        $floatingWarning = $snippetWarning !== null
+            ? '<div class="small text-dark bg-warning p-2 mt-2 rounded" style="max-width:260px;">' . $warningTitle . '</div>'
+            : '';
 
         $styleMarkup = <<<HTML
 <style data-maxcache-purge-action-style>
@@ -508,7 +514,7 @@ HTML;
     <div class="header-item-icon">
       <span class="icon-trash" aria-hidden="true"></span>
     </div>
-    <div class="header-item-text">Purge MAx Cache</div>
+    <div class="header-item-text">Purge MAx Cache{$headerWarning}</div>
   </a>
   <form id="maxcache-purge-form" method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="display:none;">
     <input type="hidden" name="maxcache_action" value="purge_cache">
@@ -522,9 +528,10 @@ HTML;
   <form method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="margin:0;">
     <input type="hidden" name="maxcache_action" value="purge_cache">
     <input type="hidden" name="{$token}" value="1">
-    <button type="submit" class="btn btn-danger">
+    <button type="submit" class="{$buttonClass}">
       Purge MAx Cache
     </button>
+    {$floatingWarning}
   </form>
 </div>
 HTML;
@@ -540,6 +547,26 @@ HTML;
         $body = ($headerMatches ?? 0) > 0 ? (string) $updated : $body;
 
         $app->setBody((string) preg_replace('#</body>#i', $styleMarkup . "\n" . $floatingMarkup . "\n</body>", $body, 1));
+    }
+
+    private function getSnippetApplyWarning(): ?string
+    {
+        try {
+            $snippet = $this->buildCurrentSnippet();
+            $status = AdminToolsManager::isAvailable()
+                ? AdminToolsManager::getStatus($snippet)
+                : HtaccessManager::getStatus($snippet);
+            $state = (string) ($status['state'] ?? 'unknown');
+
+            return match ($state) {
+                'applied' => null,
+                'outdated' => 'MAx Cache server snippet is applied but outdated. Purge clears files, but update the snippet so Apache serves the current rules.',
+                'not_applied' => 'MAx Cache server snippet is not applied. Purge clears files, but Apache will not serve MAx Cache until you apply the snippet.',
+                default => 'MAx Cache server snippet status could not be verified. Purge clears files, but verify server integration before relying on static delivery.',
+            };
+        } catch (\Throwable $exception) {
+            return 'MAx Cache server snippet status could not be verified. Purge clears files, but verify server integration before relying on static delivery.';
+        }
     }
 
     private function buildCurrentSnippet(): string

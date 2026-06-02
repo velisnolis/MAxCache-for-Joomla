@@ -27,6 +27,13 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.30
+
+- admin purge button:
+  - show the `Purge MAx Cache` action whenever the plugin is active in authenticated admin pages
+  - no longer require the generated server snippet to be applied before exposing the purge action
+  - warn when the server snippet is not applied, outdated, or cannot be verified
+
 ## New in 0.1.29
 
 - language-prefixed cache path detection:
