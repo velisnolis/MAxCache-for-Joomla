@@ -93,6 +93,14 @@ Output:
 - `.docker-build/pkg_maxcache-lab.zip`
 - `updates/pkg_maxcache.xml`
 
+## Local Tests
+
+Run the dependency-free local checks with:
+
+```bash
+php tests/run.php
+```
+
 ## Joomla Auto-Updates
 
 The package manifest is set up to use a Joomla update server feed at:

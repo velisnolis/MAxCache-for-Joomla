@@ -30,6 +30,7 @@ use Joomla\Event\SubscriberInterface;
 use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
+use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
@@ -714,7 +715,6 @@ HTML;
 
     private function buildTargetPath(): ?string
     {
-        $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
         $uri = Uri::getInstance();
         $server = $this->getApplication()->getInput()->server;
         $host = strtolower((string) ($server->getString('HTTP_HOST', '') ?: $uri->getHost() ?: 'site'));
@@ -728,81 +728,17 @@ HTML;
         $requestUri = (string) $server->getString('REQUEST_URI', '');
         $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?: $uri->getPath());
 
-        if ($root === '' || $host === '') {
-            return null;
-        }
-
-        $segments = array_values(array_filter(explode('/', trim($requestPath, '/')), 'strlen'));
-        $pathMode = (string) $this->params->get('path_mode', 'host-language-sef');
-        $parts = [$root, $this->sanitizePathSegment($host)];
-        $hasLanguagePrefix = $this->requestHasLanguagePrefix($segments);
-
-        if ((int) $this->params->get('vary_language', 1) === 1) {
-            $languageSegment = $this->detectLanguageSegment($segments);
-
-            if ($languageSegment !== '' && $hasLanguagePrefix) {
-                $parts[] = $languageSegment;
-
-                if ($pathMode === 'host-language-sef' && $hasLanguagePrefix && $segments !== []) {
-                    array_shift($segments);
-                }
-            }
-        }
-
-        foreach ($segments as $segment) {
-            $parts[] = $this->sanitizePathSegment($segment);
-        }
-
-        $filename = 'index';
-
-        if ((int) $this->params->get('vary_mobile', 0) === 1 && $this->isMobileRequest()) {
-            $filename .= '-mobile';
-        }
-
-        if (strtolower((string) $uri->getScheme()) === 'https') {
-            $filename .= '-https';
-        }
-
-        $variantSuffix = $this->getPagecacheVariantSuffix();
-
-        if ($variantSuffix !== '') {
-            $filename .= '-v-' . $variantSuffix;
-        }
-
-        $filename .= '.html';
-
-        return implode('/', $parts) . '/' . $filename;
-    }
-
-    private function detectLanguageSegment(array $segments): string
-    {
-        if ($this->requestHasLanguagePrefix($segments)) {
-            return strtolower((string) $segments[0]);
-        }
-
-        $tag = strtolower((string) $this->getApplication()->getLanguage()->getTag());
-
-        if ($tag === '') {
-            return '';
-        }
-
-        return explode('-', $tag)[0];
-    }
-
-    private function requestHasLanguagePrefix(array $segments): bool
-    {
-        if ($segments === []) {
-            return false;
-        }
-
-        $segment = strtolower((string) $segments[0]);
-        $languageSefs = LanguageRoutingDetector::getPublishedLanguageSefs();
-
-        if ($languageSefs !== []) {
-            return \in_array($segment, $languageSefs, true);
-        }
-
-        return (bool) preg_match('#^[a-z]{2,3}(?:-[a-z]{2})?$#', $segment);
+        return CachePathBuilder::build([
+            'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
+            'host' => $host,
+            'request_path' => $requestPath,
+            'scheme' => $uri->getScheme(),
+            'vary_language' => (int) $this->params->get('vary_language', 1),
+            'vary_mobile' => (int) $this->params->get('vary_mobile', 0),
+            'is_mobile' => $this->isMobileRequest(),
+            'variant_suffix' => $this->getPagecacheVariantSuffix(),
+            'language_sefs' => LanguageRoutingDetector::getPublishedLanguageSefs(),
+        ]);
     }
 
     private function getEffectiveCustomExcludePatterns(): array
@@ -1180,9 +1116,7 @@ HTML;
 
     private function sanitizePathSegment(string $segment): string
     {
-        $segment = rawurlencode(rawurldecode(trim($segment)));
-
-        return $segment === '' ? 'index' : $segment;
+        return CachePathBuilder::sanitizePathSegment($segment);
     }
 
     private function normalizeLineList(string $value): array
