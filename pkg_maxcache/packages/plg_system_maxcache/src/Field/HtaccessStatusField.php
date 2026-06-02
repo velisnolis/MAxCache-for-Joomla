@@ -12,9 +12,11 @@ use Joomla\CMS\Factory;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
+use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
 \defined('_JEXEC') or die;
@@ -53,11 +55,33 @@ final class HtaccessStatusField extends FormField
 
         $html = [];
         $guestSessionWarning = $this->getGuestSessionTrackingWarning();
+        $systemCacheStatus = SystemCacheStatus::getStatus();
+        $invalidExclusions = RegexPatternMatcher::findInvalid($this->getEffectiveCustomExcludePatterns());
 
         if ($guestSessionWarning !== null) {
             $html[] = '<div class="alert alert-danger">';
             $html[] = '<p><strong>Guest-page caching warning:</strong> ' . htmlspecialchars($guestSessionWarning, ENT_QUOTES, 'UTF-8') . '</p>';
             $html[] = '<p><strong>Action needed:</strong> Disable <code>Guest Session Tracking</code> in Joomla Global Configuration if you want MAx Cache to serve static cache consistently to anonymous visitors.</p>';
+            $html[] = '</div>';
+        }
+
+        if (($systemCacheStatus['enabled'] ?? false) === true) {
+            $html[] = '<div class="alert alert-warning">';
+            $html[] = '<p><strong>System - Cache conflict:</strong> Joomla System - Cache is enabled and can serve full pages before MAx Cache runs.</p>';
+            $html[] = '<p><strong>Action needed:</strong> Disable <code>System - Cache</code>. MAx Cache will still inherit its saved URL and menu exclusions from the plugin configuration.</p>';
+            $html[] = '</div>';
+        }
+
+        if ($invalidExclusions !== []) {
+            $html[] = '<div class="alert alert-warning">';
+            $html[] = '<p><strong>Invalid exclusion regex:</strong> These patterns are ignored by MAx Cache until fixed:</p>';
+            $html[] = '<ul>';
+
+            foreach ($invalidExclusions as $pattern) {
+                $html[] = '<li><code>' . htmlspecialchars($pattern, ENT_QUOTES, 'UTF-8') . '</code></li>';
+            }
+
+            $html[] = '</ul>';
             $html[] = '</div>';
         }
 
@@ -128,6 +152,13 @@ final class HtaccessStatusField extends FormField
         } catch (\Throwable $exception) {
             return null;
         }
+    }
+
+    private function getEffectiveCustomExcludePatterns(): array
+    {
+        return SystemCacheSettings::mergeUrlPatterns(BuiltInExclusions::filterCustomPatterns(
+            $this->normalizeLineList((string) $this->form->getValue('exclude', 'params'))
+        ));
     }
 
     private function normalizeLineList(string $value): array

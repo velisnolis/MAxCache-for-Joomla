@@ -6,9 +6,17 @@ const _JEXEC = 1;
 
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathBuilder.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/LanguageRoutingProfile.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/AtomicFileWriter.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/RegexPatternMatcher.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathHelper.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BuiltInExclusions.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetBuilder.php';
 
+use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
+use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
+use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 $failures = [];
 
@@ -115,6 +123,30 @@ $profile = LanguageRoutingProfile::detect(true, ['remove_default_prefix' => 1], 
 ]);
 
 assertSameValue('removed default prefix is detected as partially prefixed', 'partially_prefixed', $profile['state']);
+
+assertSameValue('valid regex pattern matches the URL subject', true, RegexPatternMatcher::matchesAny(['/secret(?:/.*|$)'], 'https://example.test/secret/page /index.php'));
+assertSameValue('invalid regex pattern is skipped at runtime', false, RegexPatternMatcher::matchesAny(['[broken'], 'https://example.test/secret/page /index.php'));
+assertSameValue('invalid regex pattern is reported for admin feedback', ['[broken'], RegexPatternMatcher::findInvalid(['/ok(?:/.*|$)', '[broken']));
+
+$snippet = SnippetBuilder::buildModMaxcacheSnippet([
+    'cache_root' => '/var/cache/joomla-maxcache',
+    'exclude' => "/ok(?:/.*|$)\n[broken",
+]);
+
+assertSameValue('snippet keeps valid custom exclusion regex', true, str_contains($snippet, '/ok(?:/.*|$)'));
+assertSameValue('snippet omits invalid custom exclusion regex', false, str_contains($snippet, '[broken'));
+
+$atomicDir = sys_get_temp_dir() . '/maxcache-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
+mkdir($atomicDir, 0700, true);
+$atomicPath = $atomicDir . '/cache.html';
+
+assertSameValue('atomic writer creates a new file', true, AtomicFileWriter::write($atomicPath, 'first'));
+assertSameValue('atomic writer wrote expected first contents', 'first', (string) file_get_contents($atomicPath));
+assertSameValue('atomic writer replaces existing file contents', true, AtomicFileWriter::write($atomicPath, 'second'));
+assertSameValue('atomic writer wrote expected replacement contents', 'second', (string) file_get_contents($atomicPath));
+
+unlink($atomicPath);
+rmdir($atomicDir);
 
 echo "\n";
 

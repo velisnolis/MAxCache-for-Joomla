@@ -26,16 +26,21 @@ use Joomla\Component\Content\Site\Helper\RouteHelper as ContentRouteHelper;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
+use Joomla\Event\Event;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
+use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
+use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
+use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
 \defined('_JEXEC') or die;
@@ -43,6 +48,9 @@ use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 final class Maxcache extends CMSPlugin implements SubscriberInterface, DispatcherAwareInterface
 {
     use DispatcherAwareTrait;
+
+    private const SNIPPET_STATUS_CACHE_KEY = 'plg_system_maxcache.snippet_status_cache';
+    private const SNIPPET_STATUS_CACHE_TTL = 300;
 
     private ?SiteRouter $router;
     private bool $eligible = false;
@@ -64,6 +72,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             'onAfterRender' => 'onAfterRender',
             'onAfterRespond' => 'onAfterRespond',
             'onContentAfterSave' => 'onContentAfterSave',
+            'onContentChangeState' => 'onContentChangeState',
+            'onContentAfterDelete' => 'onContentAfterDelete',
+            'onExtensionAfterSave' => 'onExtensionAfterSave',
         ];
     }
 
@@ -166,13 +177,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        @file_put_contents($this->targetPath, $body);
+        if (!AtomicFileWriter::write($this->targetPath, $body)) {
+            $this->emitDebugHeaders('write-failed');
+            return;
+        }
 
         if ($this->gzipPath !== null) {
             $gzip = gzencode($body, 6);
 
-            if ($gzip !== false) {
-                @file_put_contents($this->gzipPath, $gzip);
+            if ($gzip !== false && !AtomicFileWriter::write($this->gzipPath, $gzip)) {
+                $this->emitDebugHeaders('gzip-write-failed');
+                return;
             }
         }
 
@@ -247,34 +262,166 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
+        $this->purgeChangedItems($context, [$item]);
+    }
+
+    public function onContentChangeState(Event $event): void
+    {
+        $context = (string) $event->getArgument('context', '');
+
+        if (!\in_array($context, ['com_content.article', 'com_menus.item'], true)) {
+            return;
+        }
+
+        $pks = $event->getArgument('pks', []);
+        $ids = \is_array($pks) ? $pks : [$pks];
+        $items = $this->loadItemsByIds($context, $ids);
+
+        $this->purgeChangedItems($context, $items);
+    }
+
+    public function onContentAfterDelete(Event $event): void
+    {
+        $context = (string) $event->getArgument('context', '');
+        $item = $event->getArgument('item');
+
+        if (!\in_array($context, ['com_content.article', 'com_menus.item'], true) || !\is_object($item)) {
+            return;
+        }
+
+        $this->purgeChangedItems($context, [$item]);
+    }
+
+    public function onExtensionAfterSave(AfterSaveEvent $event): void
+    {
+        $context = $event->getContext();
+        $item = $event->getItem();
+
+        if (!\is_object($item) || !$this->isOwnPluginSave($context, $item)) {
+            return;
+        }
+
+        $this->clearSnippetStatusCache();
+        $this->cleanJoomlaCaches();
+
+        $savedParams = new Registry((string) ($item->params ?? '{}'));
+        $invalidPatterns = RegexPatternMatcher::findInvalid(SystemCacheSettings::mergeUrlPatterns(
+            BuiltInExclusions::filterCustomPatterns(
+                $this->normalizeLineList((string) $savedParams->get('exclude', ''))
+            )
+        ));
+
+        if ($invalidPatterns !== []) {
+            $this->getApplication()->enqueueMessage(
+                'MAx Cache ignored invalid exclusion regex patterns: ' . implode(', ', $invalidPatterns),
+                'warning'
+            );
+        }
+    }
+
+    private function purgeChangedItems(string $context, array $items): void
+    {
         if ($this->params->get('purge_strategy', 'targeted') === 'full') {
-            if ($this->usesRegularLabsAutomation()) {
-                return;
+            if ($this->shouldRunFullPurgeForContentChange()) {
+                $this->purgeAll();
             }
 
-            if (!(int) $this->params->get('full_regenerate_on_save', 1)) {
-                return;
-            }
+            return;
+        }
 
+        if ($items === []) {
             $this->purgeAll();
             return;
         }
 
-        $paths = $this->resolvePurgePaths($context, $item);
+        $paths = [];
+        $aliases = [];
 
-        if ($paths === []) {
+        foreach ($items as $item) {
+            if (!\is_object($item)) {
+                continue;
+            }
+
+            $paths = array_merge($paths, $this->resolvePurgePaths($context, $item));
+
             $alias = isset($item->alias) && \is_string($item->alias) ? trim($item->alias) : '';
 
             if ($alias !== '') {
-                $this->purgeAlias($alias);
-                return;
+                $aliases[] = $alias;
             }
+        }
 
-            $this->purgeAll();
+        $paths = array_values(array_unique(array_filter($paths, static fn ($path): bool => \is_string($path) && trim($path) !== '')));
+
+        if ($paths !== []) {
+            $this->purgePaths($paths);
             return;
         }
 
-        $this->purgePaths($paths);
+        $aliases = array_values(array_unique(array_filter($aliases, static fn (string $alias): bool => $alias !== '')));
+
+        if ($aliases !== []) {
+            foreach ($aliases as $alias) {
+                $this->purgeAlias($alias);
+            }
+
+            return;
+        }
+
+        $this->purgeAll();
+    }
+
+    private function shouldRunFullPurgeForContentChange(): bool
+    {
+        return !$this->usesRegularLabsAutomation()
+            && (bool) (int) $this->params->get('full_regenerate_on_save', 1);
+    }
+
+    private function loadItemsByIds(string $context, array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn ($id): int => (int) $id, $ids),
+            static fn (int $id): bool => $id > 0
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        try {
+            /** @var DatabaseInterface $db */
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
+
+            if ($context === 'com_content.article') {
+                $query = $db->getQuery(true)
+                    ->select([
+                        $db->quoteName('id'),
+                        $db->quoteName('catid'),
+                        $db->quoteName('alias'),
+                        $db->quoteName('language'),
+                    ])
+                    ->from($db->quoteName('#__content'))
+                    ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')');
+            } else {
+                $query = $db->getQuery(true)
+                    ->select([
+                        $db->quoteName('id'),
+                        $db->quoteName('path'),
+                        $db->quoteName('alias'),
+                        $db->quoteName('home'),
+                        $db->quoteName('link'),
+                        $db->quoteName('language'),
+                    ])
+                    ->from($db->quoteName('#__menu'))
+                    ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')');
+            }
+
+            $db->setQuery($query);
+
+            return (array) $db->loadObjectList();
+        } catch (\Throwable $exception) {
+            return [];
+        }
     }
 
     private function resetRequestState(): void
@@ -308,8 +455,13 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         if ($action === 'purge_cache') {
             $this->purgeAll();
+            $cleanedCaches = $this->cleanJoomlaCaches();
+            $this->clearSnippetStatusCache();
 
             $message = 'MAx Cache static cache was fully purged.';
+            if ($cleanedCaches > 0) {
+                $message .= ' Joomla cache clean was also requested.';
+            }
             $app->setUserState('plg_system_maxcache.last_purge_result', [
                 'message' => $message,
                 'type' => 'success',
@@ -406,6 +558,8 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                 $message .= ' Backup created at ' . $result['backup_path'] . '.';
             }
 
+            $this->clearSnippetStatusCache();
+
             $app->setUserState('plg_system_maxcache.last_apply_result', [
                 'message' => $message,
                 'type' => 'success',
@@ -486,16 +640,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             ENT_QUOTES,
             'UTF-8'
         );
-        $snippetWarning = $this->getSnippetApplyWarning();
-        $warningTitle = $snippetWarning !== null
-            ? htmlspecialchars($snippetWarning, ENT_QUOTES, 'UTF-8')
+        $warnings = $this->getAdminPurgeWarnings();
+        $warningText = implode("\n", $warnings);
+        $warningTitle = $warnings !== []
+            ? htmlspecialchars($warningText, ENT_QUOTES, 'UTF-8')
             : '';
-        $headerWarning = $snippetWarning !== null
+        $headerWarning = $warnings !== []
             ? '<span class="badge bg-warning text-dark ms-1" title="' . $warningTitle . '">!</span>'
             : '';
-        $buttonClass = $snippetWarning !== null ? 'btn btn-warning' : 'btn btn-danger';
-        $floatingWarning = $snippetWarning !== null
-            ? '<div class="small text-dark bg-warning p-2 mt-2 rounded" style="max-width:260px;">' . $warningTitle . '</div>'
+        $buttonClass = $warnings !== [] ? 'btn btn-warning' : 'btn btn-danger';
+        $floatingWarning = $warnings !== []
+            ? '<div class="small text-dark bg-warning p-2 mt-2 rounded" style="max-width:280px;">' . nl2br($warningTitle, false) . '</div>'
             : '';
 
         $styleMarkup = <<<HTML
@@ -550,13 +705,28 @@ HTML;
         $app->setBody((string) preg_replace('#</body>#i', $styleMarkup . "\n" . $floatingMarkup . "\n</body>", $body, 1));
     }
 
+    private function getAdminPurgeWarnings(): array
+    {
+        $warnings = [];
+        $snippetWarning = $this->getSnippetApplyWarning();
+        $systemCacheWarning = $this->getSystemCacheConflictWarning();
+
+        if ($snippetWarning !== null) {
+            $warnings[] = $snippetWarning;
+        }
+
+        if ($systemCacheWarning !== null) {
+            $warnings[] = $systemCacheWarning;
+        }
+
+        return $warnings;
+    }
+
     private function getSnippetApplyWarning(): ?string
     {
         try {
             $snippet = $this->buildCurrentSnippet();
-            $status = AdminToolsManager::isAvailable()
-                ? AdminToolsManager::getStatus($snippet)
-                : HtaccessManager::getStatus($snippet);
+            $status = $this->getCachedSnippetStatus($snippet);
             $state = (string) ($status['state'] ?? 'unknown');
 
             return match ($state) {
@@ -568,6 +738,48 @@ HTML;
         } catch (\Throwable $exception) {
             return 'MAx Cache server snippet status could not be verified. Purge clears files, but verify server integration before relying on static delivery.';
         }
+    }
+
+    private function getSystemCacheConflictWarning(): ?string
+    {
+        return SystemCacheStatus::isEnabled()
+            ? 'Joomla System - Cache is enabled and may serve pages before MAx Cache runs. Disable it; MAx Cache still inherits its saved exclusions.'
+            : null;
+    }
+
+    private function getCachedSnippetStatus(string $snippet): array
+    {
+        $expectedHash = HtaccessManager::buildHash($snippet);
+        $target = AdminToolsManager::isAvailable() ? 'admintools' : 'htaccess';
+        $cache = $this->getApplication()->getUserState(self::SNIPPET_STATUS_CACHE_KEY);
+
+        if (
+            \is_array($cache)
+            && (string) ($cache['expected_hash'] ?? '') === $expectedHash
+            && (string) ($cache['target'] ?? '') === $target
+            && (time() - (int) ($cache['time'] ?? 0)) <= self::SNIPPET_STATUS_CACHE_TTL
+            && \is_array($cache['status'] ?? null)
+        ) {
+            return $cache['status'];
+        }
+
+        $status = $target === 'admintools'
+            ? AdminToolsManager::getStatus($snippet)
+            : HtaccessManager::getStatus($snippet);
+
+        $this->getApplication()->setUserState(self::SNIPPET_STATUS_CACHE_KEY, [
+            'expected_hash' => $expectedHash,
+            'target' => $target,
+            'time' => time(),
+            'status' => $status,
+        ]);
+
+        return $status;
+    }
+
+    private function clearSnippetStatusCache(): void
+    {
+        $this->getApplication()->setUserState(self::SNIPPET_STATUS_CACHE_KEY, null);
     }
 
     private function buildCurrentSnippet(): string
@@ -651,13 +863,7 @@ HTML;
             $internalUrl .= '?' . Uri::buildQuery($this->router->getVars());
         }
 
-        foreach ($exclusions as $pattern) {
-            if (@preg_match('#' . $pattern . '#i', $externalUrl . ' ' . $internalUrl)) {
-                return true;
-            }
-        }
-
-        return false;
+        return RegexPatternMatcher::matchesAny($exclusions, $externalUrl . ' ' . $internalUrl);
     }
 
     private function hasBypassCookie(): bool
@@ -873,7 +1079,17 @@ HTML;
     private function touchFullPurgeMarker(?int $timestamp = null): void
     {
         $timestamp ??= time();
-        @file_put_contents($this->getFullPurgeMarkerPath(), (string) $timestamp, LOCK_EX);
+        AtomicFileWriter::write($this->getFullPurgeMarkerPath(), (string) $timestamp);
+    }
+
+    private function cleanJoomlaCaches(): int
+    {
+        $results = JoomlaCacheCleaner::clean();
+
+        return \count(array_filter(
+            $results,
+            static fn (array $result): bool => (bool) ($result['cleaned'] ?? false)
+        ));
     }
 
     private function updatePluginParams(array $overrides): void
@@ -900,6 +1116,38 @@ HTML;
         $db->setQuery($query);
         $db->execute();
         $this->params = $registry;
+        $this->clearSnippetStatusCache();
+        $this->cleanJoomlaCaches();
+    }
+
+    private function isOwnPluginSave(string $context, object $item): bool
+    {
+        if ($context !== 'com_plugins.plugin') {
+            return false;
+        }
+
+        if (
+            (string) ($item->type ?? '') === 'plugin'
+            && (string) ($item->folder ?? '') === 'system'
+            && (string) ($item->element ?? '') === 'maxcache'
+        ) {
+            return true;
+        }
+
+        $extensionId = (int) ($item->extension_id ?? $item->id ?? 0);
+
+        if ($extensionId <= 0) {
+            return false;
+        }
+
+        try {
+            /** @var DatabaseInterface $db */
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
+
+            return $extensionId === $this->getOwnExtensionId($db);
+        } catch (\Throwable $exception) {
+            return false;
+        }
     }
 
     private function configureRegularLabsCacheCleaner(array $status): void

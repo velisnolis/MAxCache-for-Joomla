@@ -151,9 +151,7 @@ final class HtaccessManager
             $updated = rtrim($current) . "\n\n" . $managedBlock . "\n";
         }
 
-        $bytes = @file_put_contents($path, $updated);
-
-        if ($bytes === false) {
+        if (!AtomicFileWriter::write($path, $updated)) {
             throw new \RuntimeException('Could not write the managed MAx Cache block to ' . $path . '. Check file ownership and permissions.');
         }
 
@@ -189,9 +187,7 @@ final class HtaccessManager
             }
         }
 
-        $bytes = @file_put_contents($path, $updated);
-
-        if ($bytes === false) {
+        if (!AtomicFileWriter::write($path, $updated)) {
             throw new \RuntimeException('Could not remove the managed MAx Cache block from ' . $path . '. Check file ownership and permissions.');
         }
 
