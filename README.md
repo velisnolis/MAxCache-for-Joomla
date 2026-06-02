@@ -27,6 +27,19 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.29
+
+- language-prefixed cache path detection:
+  - detects Joomla language SEF prefixes such as `/ca/`, `/cat/`, and `/esp/`
+  - recommends language-aware cache paths whenever Language Filter exposes a prefix, even with a single published language
+- System Cache exclusion inheritance:
+  - MAx Cache now applies `System - Cache` excluded menu items and URL patterns at runtime
+  - server snippet preview/status/apply use the same effective exclusions
+- admin UX:
+  - inherited `System - Cache` exclusions are shown in the built-in exclusions panel
+  - admin purge button remains hidden on the login screen
+  - admin purge button remains available in tablet/mobile layouts through a floating fallback
+
 ## New in 0.1.28
 
 - Admin Tools compatibility fix:

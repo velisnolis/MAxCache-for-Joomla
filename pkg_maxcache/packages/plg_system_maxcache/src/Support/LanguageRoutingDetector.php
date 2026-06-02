@@ -8,7 +8,6 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Factory;
-use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
 
 \defined('_JEXEC') or die;
@@ -22,66 +21,49 @@ final class LanguageRoutingDetector
             $db = Factory::getContainer()->get(DatabaseInterface::class);
 
             $query = $db->getQuery(true)
-                ->select($db->quoteName('enabled'))
+                ->select([$db->quoteName('enabled'), $db->quoteName('params')])
                 ->from($db->quoteName('#__extensions'))
                 ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
                 ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
                 ->where($db->quoteName('element') . ' = ' . $db->quote('languagefilter'));
             $db->setQuery($query);
-            $languageFilterEnabled = (int) $db->loadResult() === 1;
+            $languageFilter = $db->loadAssoc() ?: [];
+            $languageFilterEnabled = (int) ($languageFilter['enabled'] ?? 0) === 1;
+            $languageFilterParams = json_decode((string) ($languageFilter['params'] ?? '{}'), true) ?: [];
+            $removeDefaultPrefix = (int) ($languageFilterParams['remove_default_prefix'] ?? 0) === 1;
 
             $query = $db->getQuery(true)
-                ->select('COUNT(*)')
+                ->select([$db->quoteName('lang_code'), $db->quoteName('sef')])
                 ->from($db->quoteName('#__languages'))
-                ->where($db->quoteName('published') . ' = 1');
-            $db->setQuery($query);
-            $publishedLanguages = (int) $db->loadResult();
-
-            $query = $db->getQuery(true)
-                ->select($db->quoteName('path'))
-                ->from($db->quoteName('#__menu'))
                 ->where($db->quoteName('published') . ' = 1')
-                ->where($db->quoteName('client_id') . ' = 0')
-                ->where($db->quoteName('path') . ' <> ' . $db->quote(''))
-                ->where($db->quoteName('path') . ' <> ' . $db->quote('/'));
+                ->order($db->quoteName('lang_id') . ' ASC');
             $db->setQuery($query);
+            $languages = (array) $db->loadAssocList();
+            $publishedLanguages = count($languages);
+            $languageSefs = array_values(array_filter(array_map(
+                static fn (array $language): string => strtolower(trim((string) ($language['sef'] ?? ''))),
+                $languages
+            )));
 
-            $prefixes = [];
-
-            foreach ((array) $db->loadColumn() as $path) {
-                $first = strtolower((string) strtok((string) $path, '/'));
-
-                if ($first !== '' && (bool) preg_match('#^[a-z]{2}(?:-[a-z]{2})?$#', $first)) {
-                    $prefixes[$first] = true;
-                }
-            }
-
-            $hasLanguagePrefixes = $prefixes !== [];
-
-            if ($languageFilterEnabled && $hasLanguagePrefixes) {
+            if ($languageFilterEnabled && $publishedLanguages >= 1 && !$removeDefaultPrefix) {
                 return [
                     'state' => 'prefixed',
                     'recommended_path_mode' => 'host-language-sef',
                     'recommended_vary_language' => 1,
-                    'message' => 'Language Filter is enabled and language prefixes are visible in site URLs. Host + Language + SEF Path is the recommended default.',
+                    'message' => 'Language Filter is enabled and published site language SEF prefixes are exposed in URLs'
+                        . self::formatLanguageSefs($languageSefs)
+                        . '. Host + Language + SEF Path is the recommended default.',
                 ];
             }
 
-            if ($languageFilterEnabled && $publishedLanguages > 1 && self::frontendRedirectShowsLanguagePrefix()) {
+            if ($languageFilterEnabled && $publishedLanguages > 1 && $removeDefaultPrefix) {
                 return [
-                    'state' => 'prefixed',
+                    'state' => 'partially_prefixed',
                     'recommended_path_mode' => 'host-language-sef',
                     'recommended_vary_language' => 1,
-                    'message' => 'Language Filter is enabled and the frontend redirects into a language-prefixed URL structure. Host + Language + SEF Path is the recommended default.',
-                ];
-            }
-
-            if ($languageFilterEnabled && $publishedLanguages > 1) {
-                return [
-                    'state' => 'multilingual_hidden',
-                    'recommended_path_mode' => 'host-sef',
-                    'recommended_vary_language' => 0,
-                    'message' => 'Language Filter is enabled, but language is not exposed in the URL structure. For deterministic server cache paths, Host + SEF Path is the safer default.',
+                    'message' => 'Language Filter is enabled with multiple published site languages'
+                        . self::formatLanguageSefs($languageSefs)
+                        . ', but the default language prefix is removed. Host + Language + SEF Path is still the recommended default for non-default language URLs.',
                 ];
             }
 
@@ -101,94 +83,35 @@ final class LanguageRoutingDetector
         }
     }
 
-    private static function frontendRedirectShowsLanguagePrefix(): bool
+    public static function getPublishedLanguageSefs(): array
     {
-        $frontendRoot = preg_replace('#/administrator/?$#', '/', Uri::base());
+        try {
+            /** @var DatabaseInterface $db */
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
 
-        if (!\is_string($frontendRoot) || $frontendRoot === '') {
-            return false;
+            $query = $db->getQuery(true)
+                ->select($db->quoteName('sef'))
+                ->from($db->quoteName('#__languages'))
+                ->where($db->quoteName('published') . ' = 1')
+                ->where($db->quoteName('sef') . ' <> ' . $db->quote(''));
+            $db->setQuery($query);
+
+            return array_values(array_unique(array_filter(array_map(
+                static fn ($sef): string => strtolower(trim((string) $sef)),
+                (array) $db->loadColumn()
+            ))));
+        } catch (\Throwable $exception) {
+            return [];
         }
-
-        $headers = self::fetchHeaders($frontendRoot);
-
-        if ($headers === []) {
-            return false;
-        }
-
-        foreach ($headers as $name => $value) {
-            if (strtolower((string) $name) !== 'location') {
-                continue;
-            }
-
-            foreach ((array) $value as $candidate) {
-                $path = (string) parse_url((string) $candidate, PHP_URL_PATH);
-
-                if (preg_match('#^/[a-z]{2}(?:-[a-z]{2})?(/|$)#i', $path)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
-    private static function fetchHeaders(string $url): array
+    private static function formatLanguageSefs(array $sefs): string
     {
-        if (\function_exists('curl_init')) {
-            $ch = curl_init($url);
-
-            if ($ch !== false) {
-                curl_setopt_array($ch, [
-                    CURLOPT_NOBODY => true,
-                    CURLOPT_HEADER => true,
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_FOLLOWLOCATION => false,
-                    CURLOPT_TIMEOUT => 5,
-                    CURLOPT_CONNECTTIMEOUT => 3,
-                    CURLOPT_SSL_VERIFYPEER => true,
-                    CURLOPT_SSL_VERIFYHOST => 2,
-                    CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-                ]);
-
-                $raw = curl_exec($ch);
-
-                if (\is_string($raw) && $raw !== '') {
-                    curl_close($ch);
-
-                    return self::parseRawHeaders($raw);
-                }
-
-                curl_close($ch);
-            }
+        if ($sefs === []) {
+            return '';
         }
 
-        $context = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
-        $result = @get_headers($url, true, $context);
-
-        return \is_array($result) ? $result : [];
+        return ' (' . implode(', ', $sefs) . ')';
     }
 
-    private static function parseRawHeaders(string $raw): array
-    {
-        $headers = [];
-        $lines = preg_split("/\r\n|\n|\r/", trim($raw)) ?: [];
-
-        foreach ($lines as $line) {
-            if (!str_contains($line, ':')) {
-                continue;
-            }
-
-            [$name, $value] = explode(':', $line, 2);
-            $name = trim($name);
-            $value = trim($value);
-
-            if (isset($headers[$name])) {
-                $headers[$name] = array_merge((array) $headers[$name], [$value]);
-            } else {
-                $headers[$name] = $value;
-            }
-        }
-
-        return $headers;
-    }
 }

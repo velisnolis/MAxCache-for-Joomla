@@ -31,9 +31,11 @@ use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
+use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
 \defined('_JEXEC') or die;
 
@@ -368,9 +370,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                 [
                     'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
                     'site_hosts' => $this->params->get('site_hosts', ''),
-                    'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
-                        $this->normalizeLineList((string) $this->params->get('exclude', ''))
-                    )),
+                    'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
                     'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                     'allowed_query_params' => $this->params->get('allowed_query_params', ''),
                 ]
@@ -491,8 +491,19 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             'UTF-8'
         );
 
+        $styleMarkup = <<<HTML
+<style data-maxcache-purge-action-style>
+@media (min-width: 1200px) {
+  [data-maxcache-purge-action="floating"] { display: none !important; }
+}
+@media (max-width: 1199.98px) {
+  [data-maxcache-purge-action="floating"] { display: block !important; }
+}
+</style>
+HTML;
+
         $headerMarkup = <<<HTML
-<div class="header-item" data-maxcache-purge-action>
+<div class="header-item" data-maxcache-purge-action="header">
   <a href="javascript:" onclick="return document.getElementById('maxcache-purge-form')?.requestSubmit();" class="header-item-content" title="Purge MAx Cache">
     <div class="header-item-icon">
       <span class="icon-trash" aria-hidden="true"></span>
@@ -507,7 +518,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 HTML;
 
         $floatingMarkup = <<<HTML
-<div data-maxcache-purge-action style="position:fixed;right:18px;bottom:18px;z-index:1080;">
+<div data-maxcache-purge-action="floating" style="display:none;position:fixed;right:18px;bottom:18px;z-index:1080;">
   <form method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="margin:0;">
     <input type="hidden" name="maxcache_action" value="purge_cache">
     <input type="hidden" name="{$token}" value="1">
@@ -526,13 +537,9 @@ HTML;
             $headerMatches
         );
 
-        if (($headerMatches ?? 0) > 0) {
-            $app->setBody((string) $updated);
+        $body = ($headerMatches ?? 0) > 0 ? (string) $updated : $body;
 
-            return;
-        }
-
-        $app->setBody((string) preg_replace('#</body>#i', $floatingMarkup . "\n</body>", $body, 1));
+        $app->setBody((string) preg_replace('#</body>#i', $styleMarkup . "\n" . $floatingMarkup . "\n</body>", $body, 1));
     }
 
     private function buildCurrentSnippet(): string
@@ -542,9 +549,7 @@ HTML;
             [
                 'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
                 'site_hosts' => $this->params->get('site_hosts', ''),
-                'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(
-                    $this->normalizeLineList((string) $this->params->get('exclude', ''))
-                )),
+                'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
                 'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                 'allowed_query_params' => $this->params->get('allowed_query_params', ''),
             ]
@@ -593,7 +598,7 @@ HTML;
 
     private function isExcludedMenuItem(): bool
     {
-        $excludedMenuItems = (array) $this->params->get('exclude_menu_items', []);
+        $excludedMenuItems = SystemCacheSettings::mergeMenuItems((array) $this->params->get('exclude_menu_items', []));
 
         if ($excludedMenuItems === []) {
             return false;
@@ -608,9 +613,7 @@ HTML;
     {
         $exclusions = array_values(array_unique(array_merge(
             BuiltInExclusions::getRuntimePatterns(),
-            BuiltInExclusions::filterCustomPatterns(
-                $this->normalizeLineList((string) $this->params->get('exclude', ''))
-            )
+            $this->getEffectiveCustomExcludePatterns()
         )));
 
         $externalUrl = Uri::getInstance()->toString();
@@ -765,7 +768,21 @@ HTML;
             return false;
         }
 
-        return (bool) preg_match('#^[a-z]{2}(?:-[a-z]{2})?$#', strtolower((string) $segments[0]));
+        $segment = strtolower((string) $segments[0]);
+        $languageSefs = LanguageRoutingDetector::getPublishedLanguageSefs();
+
+        if ($languageSefs !== []) {
+            return \in_array($segment, $languageSefs, true);
+        }
+
+        return (bool) preg_match('#^[a-z]{2,3}(?:-[a-z]{2})?$#', $segment);
+    }
+
+    private function getEffectiveCustomExcludePatterns(): array
+    {
+        return SystemCacheSettings::mergeUrlPatterns(BuiltInExclusions::filterCustomPatterns(
+            $this->normalizeLineList((string) $this->params->get('exclude', ''))
+        ));
     }
 
     private function isMobileRequest(): bool
