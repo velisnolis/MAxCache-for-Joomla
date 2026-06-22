@@ -6,10 +6,10 @@
     <element>pkg_maxcache</element>
     <type>package</type>
     <client>site</client>
-    <version>0.1.31</version>
-    <infourl title="MAxCache for Joomla">https://github.com/velisnolis/MAxCache-for-Joomla/releases/tag/v0.1.31</infourl>
+    <version>0.1.32</version>
+    <infourl title="MAxCache for Joomla">https://github.com/velisnolis/MAxCache-for-Joomla/releases/tag/v0.1.32</infourl>
     <downloads>
-      <downloadurl type="full" format="zip">https://github.com/velisnolis/MAxCache-for-Joomla/releases/download/v0.1.31/pkg_maxcache-0.1.31.zip</downloadurl>
+      <downloadurl type="full" format="zip">https://github.com/velisnolis/MAxCache-for-Joomla/releases/download/v0.1.32/pkg_maxcache-0.1.32.zip</downloadurl>
     </downloads>
     <tags>
       <tag>stable</tag>
@@ -17,6 +17,6 @@
     <maintainer>Alex Miras</maintainer>
     <maintainerurl>https://miras.pro</maintainerurl>
     <targetplatform name="joomla" version="[56]\.[0-9]+"/>
-    <sha256>e3fb8e62f1accdd5ea9ead9dd0a5e01eac709524549fc77c3a43e417f13c8e3e</sha256>
+    <sha256>b5380d66e1579b854776a2b6f9b5862cf416a19cf256aa951d74c091f8173acd</sha256>
   </update>
 </updates>

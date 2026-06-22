@@ -27,6 +27,13 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.32
+
+- server-side login/session bypass:
+  - generated Apache and mod_maxcache snippets now include Joomla frontend session cookie names derived from the site secret
+  - snippet preview, status checks, and apply actions use the same effective bypass-cookie list
+  - runtime bypass checks use the configured cookies plus Joomla session-cookie candidates
+
 ## New in 0.1.31
 
 - prefixed language cache paths:
