@@ -11,6 +11,7 @@ use Joomla\CMS\Form\FormField;
 use Joomla\CMS\Factory;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
+use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\ServerCapabilityDetector;
@@ -170,11 +171,13 @@ final class HtaccessStatusField extends FormField
             return [
                 'joomla_secret' => (string) $config->get('secret', ''),
                 'joomla_session_name' => (string) $config->get('session_name', ''),
+                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
             ];
         } catch (\Throwable $exception) {
             return [
                 'joomla_secret' => '',
                 'joomla_session_name' => '',
+                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
             ];
         }
     }

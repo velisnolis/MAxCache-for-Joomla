@@ -109,10 +109,15 @@ HTACCESS);
 
     private static function buildCookieRegex(array $params): string
     {
+        $sessionCookieNames = $params['joomla_session_cookie_names'] ?? [];
+        $sessionCookieNames = \is_array($sessionCookieNames)
+            ? BypassCookieNames::normalize($sessionCookieNames)
+            : self::normalizeLineList((string) $sessionCookieNames);
         $cookies = BypassCookieNames::mergeWithJoomlaSessionCookies(
             self::normalizeLineList((string) ($params['bypass_cookies'] ?? '')),
             (string) ($params['joomla_secret'] ?? ''),
-            (string) ($params['joomla_session_name'] ?? '')
+            (string) ($params['joomla_session_name'] ?? ''),
+            $sessionCookieNames
         );
 
         return implode('|', array_map(static fn (string $cookie): string => preg_quote($cookie, '#'), $cookies));

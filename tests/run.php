@@ -132,11 +132,17 @@ assertSameValue('invalid regex pattern is reported for admin feedback', ['[broke
 
 $sessionCookieFromConfiguredName = md5('secret-value' . 'custom-session-name');
 $sessionCookieFromSiteApplication = md5('secret-value' . 'Joomla\\CMS\\Application\\SiteApplication');
+$sessionCookieFromService = '44c05088706fb5e957c981e7d16d5a4d';
 
 assertSameValue(
-    'effective bypass cookies include configured cookies and Joomla frontend session cookies',
-    ['joomla_user_state', $sessionCookieFromConfiguredName, $sessionCookieFromSiteApplication],
-    BypassCookieNames::mergeWithJoomlaSessionCookies(['joomla_user_state'], 'secret-value', 'custom-session-name')
+    'effective bypass cookies include configured cookies, resolved service session cookies, and Joomla frontend session cookies',
+    ['joomla_user_state', $sessionCookieFromService, $sessionCookieFromConfiguredName, $sessionCookieFromSiteApplication],
+    BypassCookieNames::mergeWithJoomlaSessionCookies(
+        ['joomla_user_state'],
+        'secret-value',
+        'custom-session-name',
+        [$sessionCookieFromService]
+    )
 );
 
 $snippet = SnippetBuilder::buildModMaxcacheSnippet([
@@ -145,11 +151,13 @@ $snippet = SnippetBuilder::buildModMaxcacheSnippet([
     'bypass_cookies' => 'joomla_user_state',
     'joomla_secret' => 'secret-value',
     'joomla_session_name' => 'custom-session-name',
+    'joomla_session_cookie_names' => [$sessionCookieFromService],
 ]);
 
 assertSameValue('snippet keeps valid custom exclusion regex', true, str_contains($snippet, '/ok(?:/.*|$)'));
 assertSameValue('snippet omits invalid custom exclusion regex', false, str_contains($snippet, '[broken'));
 assertSameValue('snippet excludes configured bypass cookie', true, str_contains($snippet, 'joomla_user_state'));
+assertSameValue('snippet excludes resolved service session cookie', true, str_contains($snippet, $sessionCookieFromService));
 assertSameValue('snippet excludes configured Joomla session-name cookie', true, str_contains($snippet, $sessionCookieFromConfiguredName));
 assertSameValue('snippet excludes Joomla frontend application session cookie', true, str_contains($snippet, $sessionCookieFromSiteApplication));
 

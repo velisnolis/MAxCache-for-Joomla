@@ -807,11 +807,13 @@ HTML;
             return [
                 'joomla_secret' => (string) $config->get('secret', ''),
                 'joomla_session_name' => (string) $config->get('session_name', ''),
+                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
             ];
         } catch (\Throwable $exception) {
             return [
                 'joomla_secret' => '',
                 'joomla_session_name' => '',
+                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
             ];
         }
     }

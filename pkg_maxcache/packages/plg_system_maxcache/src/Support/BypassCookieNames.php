@@ -18,9 +18,18 @@ final class BypassCookieNames
      *
      * @return string[]
      */
-    public static function mergeWithJoomlaSessionCookies(array $configured, string $secret = '', string $sessionName = ''): array
+    public static function mergeWithJoomlaSessionCookies(
+        array $configured,
+        string $secret = '',
+        string $sessionName = '',
+        array $sessionCookieNames = []
+    ): array
     {
-        $cookies = array_merge($configured, self::joomlaSessionCookieNames($secret, $sessionName));
+        $cookies = array_merge(
+            $configured,
+            $sessionCookieNames,
+            self::joomlaSessionCookieNames($secret, $sessionName)
+        );
 
         return self::normalize($cookies);
     }
@@ -43,6 +52,52 @@ final class BypassCookieNames
         } catch (\Throwable $exception) {
             return self::normalize($configured);
         }
+    }
+
+    /**
+     * @return string[]
+     */
+    public static function factorySessionCookieNames(): array
+    {
+        $names = [];
+
+        try {
+            $container = Factory::getContainer();
+
+            foreach (['session.web.site', 'session.web.administrator'] as $serviceName) {
+                try {
+                    if (method_exists($container, 'has') && !$container->has($serviceName)) {
+                        continue;
+                    }
+
+                    $session = $container->get($serviceName);
+
+                    if (is_object($session) && method_exists($session, 'getName')) {
+                        $names[] = (string) $session->getName();
+                    }
+                } catch (\Throwable $exception) {
+                    continue;
+                }
+            }
+        } catch (\Throwable $exception) {
+            // Joomla can be partially bootstrapped when field previews are rendered.
+        }
+
+        try {
+            $application = Factory::getApplication();
+
+            if (is_object($application) && method_exists($application, 'getSession')) {
+                $session = $application->getSession();
+
+                if (is_object($session) && method_exists($session, 'getName')) {
+                    $names[] = (string) $session->getName();
+                }
+            }
+        } catch (\Throwable $exception) {
+            // The application session is best-effort; hash fallback still covers standard Joomla installs.
+        }
+
+        return self::normalize($names);
     }
 
     /**
