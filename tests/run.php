@@ -10,9 +10,11 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/RegexPatternMatcher.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathHelper.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BuiltInExclusions.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BypassCookieNames.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetBuilder.php';
 
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
+use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
@@ -128,13 +130,28 @@ assertSameValue('valid regex pattern matches the URL subject', true, RegexPatter
 assertSameValue('invalid regex pattern is skipped at runtime', false, RegexPatternMatcher::matchesAny(['[broken'], 'https://example.test/secret/page /index.php'));
 assertSameValue('invalid regex pattern is reported for admin feedback', ['[broken'], RegexPatternMatcher::findInvalid(['/ok(?:/.*|$)', '[broken']));
 
+$sessionCookieFromConfiguredName = md5('secret-value' . 'custom-session-name');
+$sessionCookieFromSiteApplication = md5('secret-value' . 'Joomla\\CMS\\Application\\SiteApplication');
+
+assertSameValue(
+    'effective bypass cookies include configured cookies and Joomla frontend session cookies',
+    ['joomla_user_state', $sessionCookieFromConfiguredName, $sessionCookieFromSiteApplication],
+    BypassCookieNames::mergeWithJoomlaSessionCookies(['joomla_user_state'], 'secret-value', 'custom-session-name')
+);
+
 $snippet = SnippetBuilder::buildModMaxcacheSnippet([
     'cache_root' => '/var/cache/joomla-maxcache',
     'exclude' => "/ok(?:/.*|$)\n[broken",
+    'bypass_cookies' => 'joomla_user_state',
+    'joomla_secret' => 'secret-value',
+    'joomla_session_name' => 'custom-session-name',
 ]);
 
 assertSameValue('snippet keeps valid custom exclusion regex', true, str_contains($snippet, '/ok(?:/.*|$)'));
 assertSameValue('snippet omits invalid custom exclusion regex', false, str_contains($snippet, '[broken'));
+assertSameValue('snippet excludes configured bypass cookie', true, str_contains($snippet, 'joomla_user_state'));
+assertSameValue('snippet excludes configured Joomla session-name cookie', true, str_contains($snippet, $sessionCookieFromConfiguredName));
+assertSameValue('snippet excludes Joomla frontend application session cookie', true, str_contains($snippet, $sessionCookieFromSiteApplication));
 
 $atomicDir = sys_get_temp_dir() . '/maxcache-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
 mkdir($atomicDir, 0700, true);

@@ -7,6 +7,7 @@
 
 namespace Vendor\Plugin\System\Maxcache\Field;
 
+use Joomla\CMS\Factory;
 use Joomla\CMS\Form\FormField;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
@@ -29,6 +30,7 @@ final class SnippetField extends FormField
                 $this->normalizeLineList((string) $this->form->getValue('exclude', 'params'))
             ))),
             'bypass_cookies' => $this->form->getValue('bypass_cookies', 'params'),
+            ...$this->getJoomlaCookieSnippetParams(),
             'allowed_query_params' => $this->form->getValue('allowed_query_params', 'params'),
             'write_gzip' => (int) $this->form->getValue('write_gzip', 'params', 0),
         ];
@@ -37,6 +39,23 @@ final class SnippetField extends FormField
         $value = htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
 
         return '<textarea id="maxcache-snippet-preview" class="form-control" rows="12" readonly="readonly">' . $value . '</textarea>';
+    }
+
+    private function getJoomlaCookieSnippetParams(): array
+    {
+        try {
+            $config = Factory::getConfig();
+
+            return [
+                'joomla_secret' => (string) $config->get('secret', ''),
+                'joomla_session_name' => (string) $config->get('session_name', ''),
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'joomla_secret' => '',
+                'joomla_session_name' => '',
+            ];
+        }
     }
 
     private function normalizeLineList(string $value): array

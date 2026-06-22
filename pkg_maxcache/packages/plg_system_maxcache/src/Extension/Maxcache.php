@@ -32,6 +32,7 @@ use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
+use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
@@ -525,6 +526,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                     'site_hosts' => $this->params->get('site_hosts', ''),
                     'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
                     'bypass_cookies' => $this->params->get('bypass_cookies', ''),
+                    ...$this->getJoomlaCookieSnippetParams(),
                     'allowed_query_params' => $this->params->get('allowed_query_params', ''),
                 ]
             );
@@ -791,9 +793,27 @@ HTML;
                 'site_hosts' => $this->params->get('site_hosts', ''),
                 'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
                 'bypass_cookies' => $this->params->get('bypass_cookies', ''),
+                ...$this->getJoomlaCookieSnippetParams(),
                 'allowed_query_params' => $this->params->get('allowed_query_params', ''),
             ]
         );
+    }
+
+    private function getJoomlaCookieSnippetParams(): array
+    {
+        try {
+            $config = Factory::getConfig();
+
+            return [
+                'joomla_secret' => (string) $config->get('secret', ''),
+                'joomla_session_name' => (string) $config->get('session_name', ''),
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'joomla_secret' => '',
+                'joomla_session_name' => '',
+            ];
+        }
     }
 
     private function getAdminReturnUrl(): string
@@ -876,7 +896,7 @@ HTML;
             $configured[] = $sessionName;
         }
 
-        foreach (array_unique($configured) as $cookieName) {
+        foreach (BypassCookieNames::mergeWithFactoryConfig($configured) as $cookieName) {
             if ($cookies->get($cookieName, null) !== null) {
                 return true;
             }
