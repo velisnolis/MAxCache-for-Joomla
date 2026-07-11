@@ -27,6 +27,15 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.34
+
+- safer built-in exclusions:
+  - exclude Joomla `com_users` and `/component/users` routes from runtime writes and generated server snippets
+  - prevents reset/remind/login/profile forms from being cached with stale CSRF tokens
+- route diagnostics:
+  - add `scripts/maxcache-route-report.sh` for migration pre/post purge checks
+  - reports HTTP status, MAxCache debug headers, matching static files, and Joomla-style token changes
+
 ## New in 0.1.33
 
 - resolved Joomla session-cookie bypass:
@@ -128,6 +137,22 @@ Run the dependency-free local checks with:
 ```bash
 php tests/run.php
 ```
+
+## Route Diagnostics
+
+For migration or purge checks, generate a pre/post route report with:
+
+```bash
+scripts/maxcache-route-report.sh --base-url https://example.com --routes routes.txt --cache-root /home/example/public_html/maxcache
+```
+
+The script is read-only unless `--purge-cmd` is provided. Use it before trusting
+cached HTTP `200` responses during migrations: a route that becomes `404` after purge
+was being masked by stale static HTML, not confirmed as a live Joomla route.
+
+For CSRF-sensitive forms, include the reset/remind/login routes in `routes.txt`.
+The report extracts Joomla-style hidden token names twice with cache-busting query
+parameters and flags whether the token changes.
 
 ## Joomla Auto-Updates
 

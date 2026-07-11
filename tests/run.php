@@ -15,6 +15,7 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
+use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
@@ -129,6 +130,22 @@ assertSameValue('removed default prefix is detected as partially prefixed', 'par
 assertSameValue('valid regex pattern matches the URL subject', true, RegexPatternMatcher::matchesAny(['/secret(?:/.*|$)'], 'https://example.test/secret/page /index.php'));
 assertSameValue('invalid regex pattern is skipped at runtime', false, RegexPatternMatcher::matchesAny(['[broken'], 'https://example.test/secret/page /index.php'));
 assertSameValue('invalid regex pattern is reported for admin feedback', ['[broken'], RegexPatternMatcher::findInvalid(['/ok(?:/.*|$)', '[broken']));
+assertSameValue(
+    'built-in exclusions protect Joomla users component query routes',
+    true,
+    RegexPatternMatcher::matchesAny(
+        BuiltInExclusions::getRuntimePatterns(),
+        'https://www.planadevic.cat/index.php?option=com_users&view=reset /index.php?option=com_users&view=reset'
+    )
+);
+assertSameValue(
+    'built-in exclusions protect Joomla users component SEF routes',
+    true,
+    RegexPatternMatcher::matchesAny(
+        BuiltInExclusions::getRuntimePatterns(),
+        'https://www.planadevic.cat/component/users/reset /index.php?option=com_users&view=reset'
+    )
+);
 
 $sessionCookieFromConfiguredName = md5('secret-value' . 'custom-session-name');
 $sessionCookieFromSiteApplication = md5('secret-value' . 'Joomla\\CMS\\Application\\SiteApplication');
@@ -156,6 +173,8 @@ $snippet = SnippetBuilder::buildModMaxcacheSnippet([
 
 assertSameValue('snippet keeps valid custom exclusion regex', true, str_contains($snippet, '/ok(?:/.*|$)'));
 assertSameValue('snippet omits invalid custom exclusion regex', false, str_contains($snippet, '[broken'));
+assertSameValue('snippet excludes Joomla users component routes', true, str_contains($snippet, 'option=com_users'));
+assertSameValue('snippet excludes Joomla users component SEF path', true, str_contains($snippet, 'component/users'));
 assertSameValue('snippet excludes configured bypass cookie', true, str_contains($snippet, 'joomla_user_state'));
 assertSameValue('snippet excludes resolved service session cookie', true, str_contains($snippet, $sessionCookieFromService));
 assertSameValue('snippet excludes configured Joomla session-name cookie', true, str_contains($snippet, $sessionCookieFromConfiguredName));

@@ -17,7 +17,9 @@ final class BuiltInExclusions
             '/administrator(?:/.*|$)',
             '/api(?:/.*|$)',
             '/component/ajax(?:/.*|$)',
+            '/component/users(?:/.*|$)',
             '(?:^|[?&])option=com_ajax(?:[=&]|$)',
+            '(?:^|[?&])option=com_users(?:[=&]|$)',
             '(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)',
             '(?:^|[?&])tmpl=component(?:[=&]|$)',
         ];
@@ -26,8 +28,9 @@ final class BuiltInExclusions
     public static function getSnippetPatterns(): array
     {
         return [
-            '/(?:administrator|api|component/ajax)(?:/.*|$)',
+            '/(?:administrator|api|component/ajax|component/users)(?:/.*|$)',
             '(?:^|[?&])option=com_ajax(?:[=&]|$)',
+            '(?:^|[?&])option=com_users(?:[=&]|$)',
             '(?:^|[?&])format=(?:feed|json|raw)(?:[=&]|$)',
             '(?:^|[?&])tmpl=component(?:[=&]|$)',
         ];
@@ -39,7 +42,9 @@ final class BuiltInExclusions
             '/administrator',
             '/api',
             '/component/ajax',
+            '/component/users',
             'option=com_ajax',
+            'option=com_users',
             'format=feed|json|raw',
             'tmpl=component',
         ];
