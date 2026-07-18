@@ -15,7 +15,8 @@ Options:
 The script is read-only unless --purge-cmd is provided. It reports whether each
 route returns HTTP successfully, whether MAxCache debug headers are visible,
 whether matching static files exist, and whether Joomla-style form token names
-change across two uncached fetches.
+change across two uncached fetches. The verdict column is a per-phase hint; compare
+pre and post rows before declaring a migrated route healthy.
 USAGE
 }
 
@@ -119,6 +120,56 @@ token_hash() {
   TOKEN_REGEX="$token_regex" perl -0777 -ne 'BEGIN { $re = $ENV{TOKEN_REGEX} } if (/$re/i) { print $1 }'
 }
 
+route_verdict() {
+  local phase="$1"
+  local status="$2"
+  local state="$3"
+  local reason="$4"
+  local files="$5"
+  local token_changed="$6"
+
+  if [[ "$token_changed" == "no" ]]; then
+    echo "csrf-token-stale"
+    return
+  fi
+
+  if [[ "$token_changed" == "yes" && "$files" == "0" ]]; then
+    echo "csrf-token-fresh"
+    return
+  fi
+
+  if [[ "$state" == "bypass" && "$reason" =~ ^(excluded-url|excluded-menu-item|pagecache-plugin|bypass-cookie)$ && "$files" == "0" ]]; then
+    echo "excluded-ok"
+    return
+  fi
+
+  if [[ "$status" == "404" && "$files" == "0" ]]; then
+    if [[ "$phase" == "post" ]]; then
+      echo "live-route-missing-after-purge"
+    else
+      echo "live-route-missing"
+    fi
+    return
+  fi
+
+  if [[ "$status" =~ ^2[0-9][0-9]$ && "$files" != "0" ]]; then
+    echo "cache-present-verify-post-purge"
+    return
+  fi
+
+  if [[ "$status" =~ ^2[0-9][0-9]$ && "$files" == "0" ]]; then
+    echo "live-ok"
+    return
+  fi
+
+  if [[ "$status" =~ ^3[0-9][0-9]$ ]]; then
+    echo "redirect-check-target"
+    return
+  fi
+
+  echo "review"
+}
+
 cache_file_count() {
   local route="$1"
   local clean="${route%%\?*}"
@@ -152,7 +203,7 @@ report_phase() {
     [[ "$route" == /* ]] || route="/$route"
 
     local url="${base_url}${route}"
-    local headers status state reason files body1 body2 token1 token2 changed
+    local headers status state reason files body1 body2 token1 token2 changed verdict
 
     headers="$(fetch_headers "$url" || true)"
     status="$(printf '%s\n' "$headers" | status_from_headers)"
@@ -170,12 +221,14 @@ report_phase() {
       [[ "$token1" != "$token2" ]] && changed='yes' || changed='no'
     fi
 
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-      "$phase" "$route" "$status" "$state" "$reason" "$files" "$token1" "$token2" "$changed"
+    verdict="$(route_verdict "$phase" "$status" "$state" "$reason" "$files" "$changed")"
+
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+      "$phase" "$route" "$status" "$state" "$reason" "$files" "$token1" "$token2" "$changed" "$verdict"
   done < "$routes_file"
 }
 
-printf 'phase,route,status,maxcache_state,maxcache_reason,cache_files,token_1,token_2,token_changed\n'
+printf 'phase,route,status,maxcache_state,maxcache_reason,cache_files,token_1,token_2,token_changed,verdict\n'
 report_phase pre
 
 if [[ -n "$purge_cmd" ]]; then

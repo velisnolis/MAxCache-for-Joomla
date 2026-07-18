@@ -27,6 +27,15 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.35
+
+- route diagnostics verdicts:
+  - add a `verdict` column to `scripts/maxcache-route-report.sh`
+  - flags stale-cache masking, post-purge missing routes, stale CSRF tokens, fresh CSRF tokens, and verified exclusions
+- migration checklist:
+  - document the pre/post purge workflow for Joomla major migrations
+  - include route sets for multilingual roots and `com_users` reset/remind forms
+
 ## New in 0.1.34
 
 - safer built-in exclusions:
@@ -152,7 +161,12 @@ was being masked by stale static HTML, not confirmed as a live Joomla route.
 
 For CSRF-sensitive forms, include the reset/remind/login routes in `routes.txt`.
 The report extracts Joomla-style hidden token names twice with cache-busting query
-parameters and flags whether the token changes.
+parameters and flags whether the token changes. The final `verdict` column gives
+a per-phase hint such as `cache-present-verify-post-purge`, `live-route-missing-after-purge`,
+or `csrf-token-stale`.
+
+Use `docs/migration-purge-checklist.md` as the operational checklist for Joomla
+major migrations and MAx Cache purge reviews.
 
 ## Joomla Auto-Updates
 
