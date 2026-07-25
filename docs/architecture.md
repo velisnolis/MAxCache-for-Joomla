@@ -121,6 +121,7 @@ newly generated snippet hash, so the admin UI can display:
 - `pkg_maxcache/pkg_maxcache.xml`: Joomla package manifest
 - `pkg_maxcache/packages/plg_system_maxcache/maxcache.xml`: plugin manifest
 - `pkg_maxcache/packages/plg_system_maxcache/src/Extension/Maxcache.php`: plugin runtime
+- `pkg_maxcache/packages/plg_console_maxcache/`: Joomla console companion
 - `updates/pkg_maxcache.xml`: Joomla update feed
 
 ## Recommended MVP

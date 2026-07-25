@@ -24,9 +24,34 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
     public function postflight(string $type, $parent): bool
     {
         $this->applyDetectedLanguageDefaults($type);
+        $this->enableConsolePlugin($type);
         $this->moveMaxcachePluginToLast();
 
         return true;
+    }
+
+    private function enableConsolePlugin(string $type): void
+    {
+        if (!\in_array($type, ['install', 'update'], true)) {
+            return;
+        }
+
+        try {
+            /** @var DatabaseInterface $db */
+            $db = Factory::getContainer()->get(DatabaseInterface::class);
+
+            $query = $db->getQuery(true)
+                ->update($db->quoteName('#__extensions'))
+                ->set($db->quoteName('enabled') . ' = 1')
+                ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+                ->where($db->quoteName('folder') . ' = ' . $db->quote('console'))
+                ->where($db->quoteName('element') . ' = ' . $db->quote('maxcache'));
+
+            $db->setQuery($query);
+            $db->execute();
+        } catch (\Throwable $exception) {
+            // Keep installation resilient if the console plugin cannot be enabled automatically.
+        }
     }
 
     public function uninstall($parent): bool

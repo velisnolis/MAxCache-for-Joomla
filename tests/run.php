@@ -5,6 +5,7 @@ declare(strict_types=1);
 const _JEXEC = 1;
 
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathBuilder.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CacheOperations.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/LanguageRoutingProfile.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/AtomicFileWriter.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/RegexPatternMatcher.php';
@@ -17,6 +18,7 @@ use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
+use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
@@ -191,6 +193,26 @@ assertSameValue('atomic writer wrote expected replacement contents', 'second', (
 
 unlink($atomicPath);
 rmdir($atomicDir);
+
+$operationsDir = sys_get_temp_dir() . '/maxcache-operations-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
+mkdir($operationsDir . '/nested', 0700, true);
+file_put_contents($operationsDir . '/index-https.html', 'one');
+file_put_contents($operationsDir . '/nested/index-mobile-https.html', 'second');
+
+assertSameValue('cache operations reject the filesystem root', false, CacheOperations::isSafeRoot('/'));
+assertSameValue('cache operations reject the site root itself', false, CacheOperations::isSafeRoot($operationsDir, $operationsDir));
+assertSameValue('cache operations accept a dedicated cache directory', true, CacheOperations::isSafeRoot($operationsDir));
+assertSameValue(
+    'cache operations report file and byte totals',
+    ['exists' => true, 'files' => 2, 'bytes' => 9],
+    CacheOperations::stats($operationsDir)
+);
+assertSameValue(
+    'cache operations purge reports the removed tree',
+    ['root' => $operationsDir, 'removed' => true, 'files' => 2, 'bytes' => 9],
+    CacheOperations::purge($operationsDir)
+);
+assertSameValue('cache operations remove the cache root', false, is_dir($operationsDir));
 
 echo "\n";
 

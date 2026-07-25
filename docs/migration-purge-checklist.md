@@ -19,6 +19,10 @@ Use this checklist during Joomla major migrations and MAx Cache purges. The goal
 /index.php?option=com_users&view=remind
 ```
 
+Add every extension-specific dynamic form as well. For RSForm sites, include each
+public form route and any direct `option=com_rsform` route used by the site. A route
+being covered by a pagecache listener is not a substitute for a live verification.
+
 For sites with custom reset or remind menu entries, include those SEF routes as well, for example:
 
 ```text
@@ -34,7 +38,8 @@ Run a read-only report first:
 scripts/maxcache-route-report.sh \
   --base-url https://example.com \
   --routes routes.txt \
-  --cache-root /home/example/public_html/maxcache
+  --cache-root /home/example/public_html/maxcache \
+  --fail-on-risk
 ```
 
 For Cloudflare-backed sites, run the same report against the origin with `--curl-extra '--resolve host:443:IP'`.
@@ -70,3 +75,17 @@ For each incident, classify the result:
 - `site config`: Joomla routes, menus, languages, or extensions are wrong.
 - `release task`: manifests, feed, ZIP, tag, or deployment need updating.
 - `docs`: the fix is procedural and should become part of the migration runbook.
+
+## Console preflight
+
+MAxCache 0.1.36 and later include native Joomla console commands:
+
+```bash
+php cli/joomla.php maxcache:status --format=json
+php cli/joomla.php maxcache:diagnose --strict
+php cli/joomla.php maxcache:purge
+```
+
+The purge command above is a dry run. Review the reported root and file count, make
+the normal site backup/snapshot, then repeat with `--confirm` only when the purge is
+part of the approved migration.

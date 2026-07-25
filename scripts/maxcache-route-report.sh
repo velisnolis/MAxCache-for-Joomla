@@ -11,6 +11,7 @@ Options:
   --purge-cmd COMMAND    Optional explicit purge command to run between pre/post checks.
   --token-regex REGEX    Optional Perl regex with one capture group for CSRF tokens.
   --curl-extra ARGS      Extra curl args as one shell word string, e.g. '--resolve host:443:IP'.
+  --fail-on-risk         Exit 1 when the final phase has any unresolved/risky verdict.
 
 The script is read-only unless --purge-cmd is provided. It reports whether each
 route returns HTTP successfully, whether MAxCache debug headers are visible,
@@ -26,6 +27,7 @@ cache_root='./maxcache'
 purge_cmd=''
 token_regex='name=["'\'']([a-f0-9]{32})["'\''][^>]*value=["'\'']1["'\'']'
 curl_extra=''
+fail_on_risk=0
 
 while (($#)); do
   case "$1" in
@@ -52,6 +54,10 @@ while (($#)); do
     --curl-extra)
       curl_extra="${2:-}"
       shift 2
+      ;;
+    --fail-on-risk)
+      fail_on_risk=1
+      shift
       ;;
     -h|--help)
       usage
@@ -192,8 +198,22 @@ cache_file_count() {
   find "$dir" -maxdepth 1 -type f -name 'index*.html*' | wc -l | tr -d ' '
 }
 
+is_safe_verdict() {
+  case "$1" in
+    live-ok|excluded-ok|csrf-token-fresh)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+phase_risk_count=0
+
 report_phase() {
   local phase="$1"
+  phase_risk_count=0
 
   while IFS= read -r route || [[ -n "$route" ]]; do
     route="${route%%#*}"
@@ -203,10 +223,11 @@ report_phase() {
     [[ "$route" == /* ]] || route="/$route"
 
     local url="${base_url}${route}"
-    local headers status state reason files body1 body2 token1 token2 changed verdict
+    local headers status location state reason files body1 body2 token1 token2 changed verdict
 
     headers="$(fetch_headers "$url" || true)"
     status="$(printf '%s\n' "$headers" | status_from_headers)"
+    location="$(printf '%s\n' "$headers" | header_value 'Location')"
     state="$(printf '%s\n' "$headers" | header_value 'X-MAxCache-State')"
     reason="$(printf '%s\n' "$headers" | header_value 'X-MAxCache-Reason')"
     files="$(cache_file_count "$route")"
@@ -223,18 +244,29 @@ report_phase() {
 
     verdict="$(route_verdict "$phase" "$status" "$state" "$reason" "$files" "$changed")"
 
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-      "$phase" "$route" "$status" "$state" "$reason" "$files" "$token1" "$token2" "$changed" "$verdict"
+    if ! is_safe_verdict "$verdict"; then
+      phase_risk_count=$((phase_risk_count + 1))
+    fi
+
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+      "$phase" "$route" "$status" "$location" "$state" "$reason" "$files" "$token1" "$token2" "$changed" "$verdict"
   done < "$routes_file"
 }
 
-printf 'phase,route,status,maxcache_state,maxcache_reason,cache_files,token_1,token_2,token_changed,verdict\n'
+printf 'phase,route,status,location,maxcache_state,maxcache_reason,cache_files,token_1,token_2,token_changed,verdict\n'
 report_phase pre
+final_risk_count="$phase_risk_count"
 
 if [[ -n "$purge_cmd" ]]; then
   echo "# running purge command: $purge_cmd" >&2
   eval "$purge_cmd"
   report_phase post
+  final_risk_count="$phase_risk_count"
 else
   echo "# no purge command provided; post-purge phase skipped" >&2
+fi
+
+if [[ "$fail_on_risk" == "1" && "$final_risk_count" != "0" ]]; then
+  echo "# final phase contains ${final_risk_count} risky or unresolved route verdict(s)" >&2
+  exit 1
 fi

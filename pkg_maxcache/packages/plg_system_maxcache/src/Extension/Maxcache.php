@@ -34,6 +34,7 @@ use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
+use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
@@ -1043,8 +1044,8 @@ HTML;
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
 
-        if ($root !== '' && self::isSafeCacheRoot($root) && Folder::exists($root)) {
-            Folder::delete($root);
+        if ($root !== '' && CacheOperations::isSafeRoot($root, \defined('JPATH_ROOT') ? JPATH_ROOT : null)) {
+            CacheOperations::purge($root, \defined('JPATH_ROOT') ? JPATH_ROOT : null);
         }
 
         $this->touchFullPurgeMarker();
@@ -1234,27 +1235,6 @@ HTML;
         $db->setQuery($query);
 
         return (int) $db->loadResult();
-    }
-
-    private static function isSafeCacheRoot(string $path): bool
-    {
-        $real = realpath($path);
-
-        if ($real === false) {
-            return true;
-        }
-
-        $dangerous = ['/', '/tmp', '/var', '/etc', '/home', '/root', '/usr', '/bin', '/sbin', '/opt', '/boot', '/dev', '/proc', '/sys', '/run', '/var/log'];
-
-        if (\in_array($real, $dangerous, true)) {
-            return false;
-        }
-
-        if (\defined('JPATH_ROOT') && $real === realpath(JPATH_ROOT)) {
-            return false;
-        }
-
-        return true;
     }
 
     private function purgeAlias(string $alias): void

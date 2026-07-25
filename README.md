@@ -9,6 +9,7 @@ MAx Cache can serve them directly.
 The current package installs:
 
 - `plg_system_maxcache`
+- `plg_console_maxcache`
 
 This repository is structured as a Joomla package repo, ready for GitHub releases and
 Joomla auto-updates.
@@ -26,6 +27,19 @@ The plugin currently includes:
 - `.htaccess` status detection
 - snippet preview
 - explicit `Apply snippet` action with backup support
+
+## New in 0.1.36
+
+- Joomla console operations:
+  - `maxcache:status` reports the installed version, effective safeguards, cache root, artifact counts, and server integration
+  - `maxcache:diagnose` reports configuration errors and warnings, with JSON and strict modes for automation
+  - `maxcache:purge` is a dry run unless the operator passes `--confirm`
+- shared purge safety:
+  - administrator and console purges use the same cache-root validation and filesystem operation
+- automation-safe route diagnostics:
+  - report redirect targets in a `location` column
+  - `--fail-on-risk` returns exit code 1 when the final phase is not conclusively safe
+  - deterministic shell fixtures cover excluded routes, fresh/stale CSRF tokens, redirects, and missing routes
 
 ## New in 0.1.35
 
@@ -145,7 +159,25 @@ Run the dependency-free local checks with:
 
 ```bash
 php tests/run.php
+tests/route-report.sh
 ```
+
+## Joomla Console Commands
+
+The package enables its companion console plugin during install/update. Run the
+commands from the Joomla root:
+
+```bash
+php cli/joomla.php maxcache:status
+php cli/joomla.php maxcache:status --format=json
+php cli/joomla.php maxcache:diagnose --strict
+php cli/joomla.php maxcache:purge
+php cli/joomla.php maxcache:purge --confirm
+```
+
+`maxcache:purge` without `--confirm` only prints the exact cache root and the
+file/byte count it would remove. The command refuses an empty, relative, symlinked,
+site-root, or known system-level cache path.
 
 ## Route Diagnostics
 
@@ -164,6 +196,10 @@ The report extracts Joomla-style hidden token names twice with cache-busting que
 parameters and flags whether the token changes. The final `verdict` column gives
 a per-phase hint such as `cache-present-verify-post-purge`, `live-route-missing-after-purge`,
 or `csrf-token-stale`.
+
+Use `--fail-on-risk` in migration automation. It exits non-zero unless every route
+in the final phase is `live-ok`, `excluded-ok`, or `csrf-token-fresh`. Redirects
+remain unresolved until their reported `location` target is added to the route file.
 
 Use `docs/migration-purge-checklist.md` as the operational checklist for Joomla
 major migrations and MAx Cache purge reviews.

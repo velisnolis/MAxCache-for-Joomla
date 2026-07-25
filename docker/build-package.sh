@@ -39,6 +39,7 @@ cp "${ROOT_DIR}/pkg_maxcache/pkg_maxcache.xml" "${PACKAGE_DIR}/pkg_maxcache.xml"
 cp "${ROOT_DIR}/pkg_maxcache/script.php" "${PACKAGE_DIR}/script.php"
 
 zip_dir_contents "${ROOT_DIR}/pkg_maxcache/packages/plg_system_maxcache" "${PACKAGE_DIR}/packages/plg_system_maxcache.zip"
+zip_dir_contents "${ROOT_DIR}/pkg_maxcache/packages/plg_console_maxcache" "${PACKAGE_DIR}/packages/plg_console_maxcache.zip"
 
 rm -f "$OUTPUT_ZIP" "$LATEST_ZIP"
 (
