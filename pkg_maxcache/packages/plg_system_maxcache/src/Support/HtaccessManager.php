@@ -8,7 +8,6 @@
 namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Date\Date;
-use Joomla\CMS\Filesystem\Folder;
 
 \defined('_JEXEC') or die;
 
@@ -124,8 +123,8 @@ final class HtaccessManager
     {
         $dir = JPATH_ROOT . '/administrator/cache/maxcache-backups';
 
-        if (!is_dir($dir)) {
-            Folder::create($dir);
+        if (!DirectoryOperations::ensure($dir)) {
+            throw new \RuntimeException('Could not create backup directory: ' . $dir);
         }
 
         return $dir;

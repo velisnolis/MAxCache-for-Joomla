@@ -7,7 +7,7 @@
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.38</version>
+	<version>0.1.39</version>
 	<description>Joomla console commands for MAxCache status, diagnosis, and guarded purge operations.</description>
 	<namespace path="src">Vendor\Plugin\Console\Maxcache</namespace>
 	<files>

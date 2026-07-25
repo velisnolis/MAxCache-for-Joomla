@@ -30,6 +30,18 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.39
+
+- Joomla 6 filesystem compatibility:
+  - replaces runtime uses of the removed `Joomla\CMS\Filesystem\Folder` class
+    with dependency-free directory operations
+  - restores automatic creation of `.htaccess` and Admin Tools backup
+    directories when they do not exist yet
+  - keeps cache artifact creation and targeted directory purges operational
+    after a Joomla 5.4 to 6 migration
+- Adds regression coverage for nested directory creation, discovery, and
+  recursive deletion without Joomla legacy filesystem classes.
+
 ## New in 0.1.38
 
 - Dynamic Joomla module fragments:

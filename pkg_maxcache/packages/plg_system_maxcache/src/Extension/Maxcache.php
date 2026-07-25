@@ -13,7 +13,6 @@ use Joomla\CMS\Event\Application\AfterRouteEvent;
 use Joomla\CMS\Event\Model\AfterSaveEvent;
 use Joomla\CMS\Event\PageCache\GetKeyEvent;
 use Joomla\CMS\Event\PageCache\IsExcludedEvent;
-use Joomla\CMS\Filesystem\Folder;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Plugin\PluginHelper;
@@ -35,6 +34,7 @@ use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
+use Vendor\Plugin\System\Maxcache\Support\DirectoryOperations;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
@@ -186,7 +186,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         $directory = \dirname($this->targetPath);
 
-        if (!Folder::exists($directory) && !Folder::create($directory)) {
+        if (!DirectoryOperations::ensure($directory)) {
             $this->emitDebugHeaders('mkdir-failed');
             return;
         }
@@ -1264,16 +1264,16 @@ HTML;
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
 
-        if ($root === '' || !Folder::exists($root)) {
+        if ($root === '' || !is_dir($root)) {
             return;
         }
 
         $safeAlias = $this->sanitizePathSegment($alias);
-        $directories = Folder::folders($root, '.', true, true);
+        $directories = DirectoryOperations::listDirectories($root);
 
         foreach ($directories as $directory) {
             if (basename($directory) === $safeAlias) {
-                Folder::delete($directory);
+                DirectoryOperations::delete($directory);
             }
         }
     }
@@ -1282,7 +1282,7 @@ HTML;
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
 
-        if ($root === '' || !Folder::exists($root)) {
+        if ($root === '' || !is_dir($root)) {
             return;
         }
 
@@ -1295,8 +1295,8 @@ HTML;
                 foreach ($hosts as $host) {
                     $directory = $root . '/' . $this->sanitizePathSegment($host);
 
-                    if (Folder::exists($directory)) {
-                        Folder::delete($directory);
+                    if (is_dir($directory)) {
+                        DirectoryOperations::delete($directory);
                     }
                 }
 
@@ -1310,8 +1310,8 @@ HTML;
                     $directory .= '/' . $this->sanitizePathSegment($segment);
                 }
 
-                if (Folder::exists($directory)) {
-                    Folder::delete($directory);
+                if (is_dir($directory)) {
+                    DirectoryOperations::delete($directory);
                 }
             }
         }

@@ -7,6 +7,7 @@ const _JEXEC = 1;
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathBuilder.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/ResponseSafety.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CacheOperations.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/DirectoryOperations.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/LanguageRoutingProfile.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/AtomicFileWriter.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/RegexPatternMatcher.php';
@@ -21,6 +22,7 @@ use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
+use Vendor\Plugin\System\Maxcache\Support\DirectoryOperations;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
@@ -273,6 +275,32 @@ assertSameValue(
     CacheOperations::purge($operationsDir)
 );
 assertSameValue('cache operations remove the cache root', false, is_dir($operationsDir));
+
+$directoryOperationsRoot = sys_get_temp_dir() . '/maxcache-directory-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
+$nestedDirectory = $directoryOperationsRoot . '/host/ca/page';
+
+assertSameValue('directory operations create nested directories without Joomla legacy filesystem classes', true, DirectoryOperations::ensure($nestedDirectory));
+file_put_contents($nestedDirectory . '/index-https.html', 'cached');
+assertSameValue(
+    'directory operations list nested cache directories',
+    true,
+    \in_array($nestedDirectory, DirectoryOperations::listDirectories($directoryOperationsRoot), true)
+);
+assertSameValue('directory operations delete a nested cache tree', true, DirectoryOperations::delete($directoryOperationsRoot . '/host'));
+assertSameValue('directory operations remove the requested cache tree', false, is_dir($directoryOperationsRoot . '/host'));
+rmdir($directoryOperationsRoot);
+
+$systemPluginSource = (string) file_get_contents(
+    __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Extension/Maxcache.php'
+);
+$htaccessManagerSource = (string) file_get_contents(
+    __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/HtaccessManager.php'
+);
+assertSameValue(
+    'Joomla 6 runtime paths do not depend on the removed CMS Folder class',
+    false,
+    str_contains($systemPluginSource . $htaccessManagerSource, 'Joomla\\CMS\\Filesystem\\Folder')
+);
 
 echo "\n";
 

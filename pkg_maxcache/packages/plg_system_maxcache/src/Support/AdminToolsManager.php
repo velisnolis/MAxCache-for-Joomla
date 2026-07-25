@@ -270,7 +270,7 @@ final class AdminToolsManager
     {
         $dir = JPATH_ROOT . '/administrator/cache/maxcache-backups';
 
-        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+        if (!DirectoryOperations::ensure($dir)) {
             throw new \RuntimeException('Could not create backup directory: ' . $dir);
         }
 
