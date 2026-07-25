@@ -10,6 +10,8 @@ The current package installs:
 
 - `plg_system_maxcache`
 - `plg_console_maxcache`
+- `plg_ajax_maxcachefragment`
+- `mod_maxcache_fragment`
 
 This repository is structured as a Joomla package repo, ready for GitHub releases and
 Joomla auto-updates.
@@ -27,6 +29,26 @@ The plugin currently includes:
 - `.htaccess` status detection
 - snippet preview
 - explicit `Apply snippet` action with backup support
+
+## New in 0.1.38
+
+- Dynamic Joomla module fragments:
+  - `MAxCache Dynamic Fragment` outputs a cache-safe placeholder instead of
+    executing the selected source module inside the static page shell
+  - the signed `com_ajax` request renders only the source module configured by
+    a published and accessible fragment instance
+  - `visible`, `immediate`, and manual loading triggers support login modals,
+    mobile dialogs, and inline dynamic blocks
+- Response safety:
+  - static writes are rejected with `csrf-token-in-response` when the final HTML
+    contains a Joomla form token
+  - an unsafe response removes the matching old plain/gzip artifacts instead of
+    leaving stale token-bearing HTML available
+  - console status/diagnosis reports `csrf-token-in-cache` with bounded samples
+    when existing static artifacts contain Joomla form tokens
+
+See [Dynamic module fragments](docs/dynamic-fragments.md) for the setup pattern
+used with login modules, Modules Anywhere, and Conditional Content.
 
 ## New in 0.1.37
 

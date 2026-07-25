@@ -40,6 +40,7 @@ use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
+use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
@@ -172,6 +173,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
+        if (ResponseSafety::containsJoomlaFormToken($body)) {
+            $this->removeCurrentArtifacts();
+            $this->getApplication()->setHeader(
+                'Cache-Control',
+                'private, no-store, no-cache, must-revalidate',
+                true
+            );
+            $this->markRejected('csrf-token-in-response');
+            return;
+        }
+
         $directory = \dirname($this->targetPath);
 
         if (!Folder::exists($directory) && !Folder::create($directory)) {
@@ -194,6 +206,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         $this->emitDebugHeaders('stored');
+    }
+
+    private function removeCurrentArtifacts(): void
+    {
+        foreach ([$this->targetPath, $this->gzipPath] as $path) {
+            if ($path === null || !is_file($path)) {
+                continue;
+            }
+
+            @unlink($path);
+        }
     }
 
     private function warnIfPluginOrderingIsNotLast(): void

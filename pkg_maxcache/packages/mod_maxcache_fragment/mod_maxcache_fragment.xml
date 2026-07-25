@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="module" client="site" method="upgrade">
+	<name>mod_maxcache_fragment</name>
+	<author>Alex Miras</author>
+	<creationDate>2026-07</creationDate>
+	<copyright>(C) 2026 Alex Miras</copyright>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<authorEmail>hola@alexmiras.com</authorEmail>
+	<authorUrl>https://alexmiras.com</authorUrl>
+	<version>0.1.38</version>
+	<description>MOD_MAXCACHE_FRAGMENT_XML_DESCRIPTION</description>
+	<namespace path="src">Vendor\Module\MaxcacheFragment</namespace>
+	<files>
+		<folder module="mod_maxcache_fragment">services</folder>
+		<folder>src</folder>
+		<folder>tmpl</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/mod_maxcache_fragment.ini</language>
+		<language tag="en-GB">language/en-GB/mod_maxcache_fragment.sys.ini</language>
+	</languages>
+	<media destination="mod_maxcache_fragment" folder="media">
+		<filename>joomla.asset.json</filename>
+		<folder>js</folder>
+	</media>
+	<config>
+		<fields name="params">
+			<fieldset name="basic">
+				<field
+					name="source_module_id"
+					type="number"
+					label="MOD_MAXCACHE_FRAGMENT_FIELD_SOURCE_MODULE_ID_LABEL"
+					description="MOD_MAXCACHE_FRAGMENT_FIELD_SOURCE_MODULE_ID_DESC"
+					required="true"
+					min="1"
+					filter="integer"
+				/>
+				<field
+					name="trigger"
+					type="list"
+					label="MOD_MAXCACHE_FRAGMENT_FIELD_TRIGGER_LABEL"
+					default="visible"
+					filter="cmd"
+				>
+					<option value="visible">MOD_MAXCACHE_FRAGMENT_TRIGGER_VISIBLE</option>
+					<option value="immediate">MOD_MAXCACHE_FRAGMENT_TRIGGER_IMMEDIATE</option>
+					<option value="manual">MOD_MAXCACHE_FRAGMENT_TRIGGER_MANUAL</option>
+				</field>
+				<field
+					name="fallback_url"
+					type="url"
+					label="MOD_MAXCACHE_FRAGMENT_FIELD_FALLBACK_URL_LABEL"
+					filter="url"
+				/>
+				<field
+					name="fallback_text"
+					type="text"
+					label="MOD_MAXCACHE_FRAGMENT_FIELD_FALLBACK_TEXT_LABEL"
+					default="Load content"
+					filter="string"
+				/>
+				<field
+					name="moduleclass_sfx"
+					type="textarea"
+					label="COM_MODULES_FIELD_MODULECLASS_SFX_LABEL"
+					rows="3"
+				/>
+				<field
+					name="cache"
+					type="hidden"
+					default="0"
+				/>
+			</fieldset>
+		</fields>
+	</config>
+</extension>

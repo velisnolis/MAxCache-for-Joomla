@@ -5,6 +5,7 @@ declare(strict_types=1);
 const _JEXEC = 1;
 
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CachePathBuilder.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/ResponseSafety.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/CacheOperations.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/LanguageRoutingProfile.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/AtomicFileWriter.php';
@@ -23,6 +24,7 @@ use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
+use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 $failures = [];
@@ -193,11 +195,45 @@ assertSameValue('managed snippet status reports an exact hash match', 'applied',
 assertSameValue('managed snippet status reports a stale applied hash', 'outdated', $outdatedStatus['state']);
 assertSameValue('managed snippet status reports a missing block', 'not_applied', $missingStatus['state']);
 
+$token = '4ff978756936e28cf822853a6aea0c1a';
+$tokenInput = '<input type="hidden" name="' . $token . '" value="1">';
+$reorderedTokenInput = "<input value='1' class='form-control' name='" . strtoupper($token) . "' type='hidden'>";
+
+assertSameValue('response safety detects a Joomla form token', $token, ResponseSafety::findJoomlaFormToken($tokenInput));
+assertSameValue('response safety detects reordered and uppercase Joomla token attributes', $token, ResponseSafety::findJoomlaFormToken($reorderedTokenInput));
+assertSameValue('response safety ignores ordinary hidden inputs', false, ResponseSafety::containsJoomlaFormToken('<input type="hidden" name="option" value="1">'));
+
 $installerScript = (string) file_get_contents(__DIR__ . '/../pkg_maxcache/script.php');
 assertSameValue(
     'package postflight invalidates Joomla plugin metadata after enabling console commands',
     true,
     str_contains($installerScript, "Factory::getCache('com_plugins', 'callback')->clean()")
+);
+assertSameValue(
+    'package postflight enables the signed fragment AJAX plugin',
+    true,
+    str_contains($installerScript, "['folder' => 'ajax', 'element' => 'maxcachefragment']")
+);
+
+$packageManifest = (string) file_get_contents(__DIR__ . '/../pkg_maxcache/pkg_maxcache.xml');
+assertSameValue(
+    'package manifest includes the dynamic fragment module',
+    true,
+    str_contains($packageManifest, 'id="maxcache_fragment">mod_maxcache_fragment.zip')
+);
+assertSameValue(
+    'package manifest includes the fragment AJAX plugin',
+    true,
+    str_contains($packageManifest, 'id="maxcachefragment">plg_ajax_maxcachefragment.zip')
+);
+
+$fragmentLoader = (string) file_get_contents(
+    __DIR__ . '/../pkg_maxcache/packages/mod_maxcache_fragment/media/js/fragment.js'
+);
+assertSameValue(
+    'fragment loader rewrites endpoint-relative forms to the current page',
+    true,
+    str_contains($fragmentLoader, 'normalizeFragmentForms(fragment)')
 );
 
 $atomicDir = sys_get_temp_dir() . '/maxcache-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
@@ -216,18 +252,24 @@ $operationsDir = sys_get_temp_dir() . '/maxcache-operations-tests-' . getmypid()
 mkdir($operationsDir . '/nested', 0700, true);
 file_put_contents($operationsDir . '/index-https.html', 'one');
 file_put_contents($operationsDir . '/nested/index-mobile-https.html', 'second');
+file_put_contents($operationsDir . '/nested/token.html', $tokenInput);
 
 assertSameValue('cache operations reject the filesystem root', false, CacheOperations::isSafeRoot('/'));
 assertSameValue('cache operations reject the site root itself', false, CacheOperations::isSafeRoot($operationsDir, $operationsDir));
 assertSameValue('cache operations accept a dedicated cache directory', true, CacheOperations::isSafeRoot($operationsDir));
 assertSameValue(
     'cache operations report file and byte totals',
-    ['exists' => true, 'files' => 2, 'bytes' => 9],
+    ['exists' => true, 'files' => 3, 'bytes' => 9 + strlen($tokenInput)],
     CacheOperations::stats($operationsDir)
 );
 assertSameValue(
+    'cache operations report static artifacts containing Joomla form tokens',
+    ['files' => 1, 'samples' => ['nested/token.html'], 'unreadable' => 0],
+    CacheOperations::joomlaFormTokenArtifacts($operationsDir)
+);
+assertSameValue(
     'cache operations purge reports the removed tree',
-    ['root' => $operationsDir, 'removed' => true, 'files' => 2, 'bytes' => 9],
+    ['root' => $operationsDir, 'removed' => true, 'files' => 3, 'bytes' => 9 + strlen($tokenInput)],
     CacheOperations::purge($operationsDir)
 );
 assertSameValue('cache operations remove the cache root', false, is_dir($operationsDir));

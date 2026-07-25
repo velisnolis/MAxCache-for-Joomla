@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="ajax" method="upgrade">
+	<name>plg_ajax_maxcachefragment</name>
+	<author>Alex Miras</author>
+	<creationDate>2026-07</creationDate>
+	<copyright>(C) 2026 Alex Miras</copyright>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<authorEmail>hola@alexmiras.com</authorEmail>
+	<authorUrl>https://alexmiras.com</authorUrl>
+	<version>0.1.38</version>
+	<description>PLG_AJAX_MAXCACHEFRAGMENT_XML_DESCRIPTION</description>
+	<namespace path="src">Vendor\Plugin\Ajax\MaxcacheFragment</namespace>
+	<files>
+		<folder plugin="maxcachefragment">services</folder>
+		<folder>src</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_ajax_maxcachefragment.ini</language>
+		<language tag="en-GB">language/en-GB/plg_ajax_maxcachefragment.sys.ini</language>
+	</languages>
+</extension>

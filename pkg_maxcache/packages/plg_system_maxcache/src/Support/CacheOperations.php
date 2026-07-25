@@ -54,6 +54,60 @@ final class CacheOperations
     }
 
     /**
+     * @return array{files: int, samples: list<string>, unreadable: int}
+     */
+    public static function joomlaFormTokenArtifacts(string $path, int $sampleLimit = 5): array
+    {
+        $root = self::normalizeRoot($path);
+        $result = [
+            'files' => 0,
+            'samples' => [],
+            'unreadable' => 0,
+        ];
+
+        if ($root === '' || !is_dir($root) || is_link($root)) {
+            return $result;
+        }
+
+        try {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($iterator as $item) {
+                if (
+                    !$item->isFile()
+                    || $item->isLink()
+                    || !str_ends_with(strtolower($item->getFilename()), '.html')
+                ) {
+                    continue;
+                }
+
+                $body = @file_get_contents($item->getPathname());
+
+                if ($body === false) {
+                    ++$result['unreadable'];
+                    continue;
+                }
+
+                if (!ResponseSafety::containsJoomlaFormToken($body)) {
+                    continue;
+                }
+
+                ++$result['files'];
+
+                if (\count($result['samples']) < max(0, $sampleLimit)) {
+                    $result['samples'][] = ltrim(substr($item->getPathname(), \strlen($root)), '/');
+                }
+            }
+        } catch (\UnexpectedValueException $exception) {
+            ++$result['unreadable'];
+        }
+
+        return $result;
+    }
+
+    /**
      * @return array{root: string, removed: bool, files: int, bytes: int}
      */
     public static function purge(string $path, ?string $siteRoot = null): array

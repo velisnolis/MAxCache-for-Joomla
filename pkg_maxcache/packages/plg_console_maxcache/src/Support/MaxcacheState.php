@@ -15,6 +15,7 @@ use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
+use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
@@ -60,6 +61,7 @@ final class MaxcacheState
         $manifest = $this->decodeJson((string) ($plugin->manifest_cache ?? '{}'));
         $cacheRoot = rtrim((string) ($params['cache_root'] ?? (JPATH_ROOT . '/maxcache')), '/');
         $stats = $this->cacheStats($cacheRoot);
+        $tokenArtifacts = CacheOperations::joomlaFormTokenArtifacts($cacheRoot);
         $customExclusions = $this->normalizeLines((string) ($params['exclude'] ?? ''));
         $invalidExclusions = array_values(array_filter(
             $customExclusions,
@@ -82,6 +84,16 @@ final class MaxcacheState
                 'severity' => 'error',
                 'code' => 'unsafe-cache-root',
                 'message' => 'The configured cache root is unsafe and purge operations are blocked.',
+            ];
+        }
+
+        if ($tokenArtifacts['files'] > 0) {
+            $issues[] = [
+                'severity' => 'error',
+                'code' => 'csrf-token-in-cache',
+                'message' => 'Static MAxCache artifacts contain Joomla form tokens and must be purged.',
+                'files' => $tokenArtifacts['files'],
+                'samples' => $tokenArtifacts['samples'],
             ];
         }
 
@@ -141,6 +153,11 @@ final class MaxcacheState
             'enabled' => (int) ($plugin->enabled ?? 0) === 1,
             'version' => (string) ($manifest['version'] ?? 'unknown'),
             'cache' => $stats,
+            'response_safety' => [
+                'csrf_token_files' => $tokenArtifacts['files'],
+                'csrf_token_samples' => $tokenArtifacts['samples'],
+                'unreadable_files' => $tokenArtifacts['unreadable'],
+            ],
             'configuration' => [
                 'path_mode' => (string) ($params['path_mode'] ?? 'host-sef'),
                 'vary_language' => (bool) ($params['vary_language'] ?? false),
@@ -236,6 +253,7 @@ final class MaxcacheState
             HtaccessManager::class => 'HtaccessManager.php',
             SnippetBuilder::class => 'SnippetBuilder.php',
             SystemCacheSettings::class => 'SystemCacheSettings.php',
+            ResponseSafety::class => 'ResponseSafety.php',
         ];
 
         foreach ($classes as $class => $file) {

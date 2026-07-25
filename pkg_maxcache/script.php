@@ -24,7 +24,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
     public function postflight(string $type, $parent): bool
     {
         $this->applyDetectedLanguageDefaults($type);
-        $this->enableConsolePlugin($type);
+        $this->enableCompanionPlugins($type);
         $this->moveMaxcachePluginToLast();
         $this->invalidatePluginMetadataCache($type);
 
@@ -44,7 +44,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         }
     }
 
-    private function enableConsolePlugin(string $type): void
+    private function enableCompanionPlugins(string $type): void
     {
         if (!\in_array($type, ['install', 'update'], true)) {
             return;
@@ -54,17 +54,24 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
             /** @var DatabaseInterface $db */
             $db = Factory::getContainer()->get(DatabaseInterface::class);
 
-            $query = $db->getQuery(true)
-                ->update($db->quoteName('#__extensions'))
-                ->set($db->quoteName('enabled') . ' = 1')
-                ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
-                ->where($db->quoteName('folder') . ' = ' . $db->quote('console'))
-                ->where($db->quoteName('element') . ' = ' . $db->quote('maxcache'));
+            foreach (
+                [
+                    ['folder' => 'console', 'element' => 'maxcache'],
+                    ['folder' => 'ajax', 'element' => 'maxcachefragment'],
+                ] as $plugin
+            ) {
+                $query = $db->getQuery(true)
+                    ->update($db->quoteName('#__extensions'))
+                    ->set($db->quoteName('enabled') . ' = 1')
+                    ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+                    ->where($db->quoteName('folder') . ' = ' . $db->quote($plugin['folder']))
+                    ->where($db->quoteName('element') . ' = ' . $db->quote($plugin['element']));
 
-            $db->setQuery($query);
-            $db->execute();
+                $db->setQuery($query);
+                $db->execute();
+            }
         } catch (\Throwable $exception) {
-            // Keep installation resilient if the console plugin cannot be enabled automatically.
+            // Keep installation resilient if companion plugins cannot be enabled automatically.
         }
     }
 

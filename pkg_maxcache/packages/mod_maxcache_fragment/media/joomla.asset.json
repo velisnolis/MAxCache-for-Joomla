@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.joomla.org/schemas/json-schema/web_assets.json",
+  "name": "mod_maxcache_fragment",
+  "version": "0.1.38",
+  "description": "MAxCache dynamic module fragment loader",
+  "license": "GPL-2.0-or-later",
+  "assets": [
+    {
+      "name": "mod_maxcache_fragment.loader",
+      "type": "script",
+      "uri": "mod_maxcache_fragment/fragment.js",
+      "version": "0.1.38",
+      "attributes": {
+        "defer": true
+      }
+    }
+  ]
+}
