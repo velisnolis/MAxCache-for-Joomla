@@ -28,6 +28,16 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.37
+
+- Refreshes Joomla's `com_plugins` metadata cache after package install/update,
+  so newly enabled `maxcache:*` console commands are available immediately.
+- `maxcache:status` and `maxcache:diagnose` now compare the applied `.htaccess`
+  snippet hash with the current effective configuration and report
+  `applied`, `outdated`, or `not_applied`.
+- Keeps server configuration changes explicit: diagnosis reports drift but never
+  rewrites `.htaccess`.
+
 ## New in 0.1.36
 
 - Joomla console operations:

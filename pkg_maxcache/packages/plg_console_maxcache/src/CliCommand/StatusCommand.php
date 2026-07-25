@@ -64,6 +64,7 @@ final class StatusCommand extends AbstractCommand
             ['Purge strategy' => $configuration['purge_strategy']],
             ['Snippet mode' => $configuration['server_snippet_mode']],
             ['Managed server block' => $server['managed_block_present'] ? 'present' : 'not found'],
+            ['Managed snippet state' => $server['snippet_state']],
             ['Joomla System - Cache' => $server['joomla_system_cache_enabled'] ? 'enabled' : 'disabled']
         );
 

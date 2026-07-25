@@ -7,10 +7,16 @@
 
 namespace Vendor\Plugin\Console\Maxcache\Support;
 
+use Joomla\CMS\Factory;
 use Joomla\Database\DatabaseInterface;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
+use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
+use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
+use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
+use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
 \defined('_JEXEC') or die;
 
@@ -54,9 +60,6 @@ final class MaxcacheState
         $manifest = $this->decodeJson((string) ($plugin->manifest_cache ?? '{}'));
         $cacheRoot = rtrim((string) ($params['cache_root'] ?? (JPATH_ROOT . '/maxcache')), '/');
         $stats = $this->cacheStats($cacheRoot);
-        $htaccess = is_file(JPATH_ROOT . '/.htaccess')
-            ? (string) file_get_contents(JPATH_ROOT . '/.htaccess')
-            : '';
         $customExclusions = $this->normalizeLines((string) ($params['exclude'] ?? ''));
         $invalidExclusions = array_values(array_filter(
             $customExclusions,
@@ -64,6 +67,7 @@ final class MaxcacheState
         ));
         $systemCache = $this->loadPlugin('system', 'cache');
         $issues = [];
+        $snippetStatus = $this->getSnippetStatus($params, $customExclusions);
 
         if ((int) ($plugin->enabled ?? 0) !== 1) {
             $issues[] = [
@@ -98,11 +102,29 @@ final class MaxcacheState
             ];
         }
 
-        if (!str_contains($htaccess, '# BEGIN MAx Cache for Joomla')) {
+        if (($snippetStatus['state'] ?? 'unknown') === 'not_applied') {
             $issues[] = [
                 'severity' => 'warning',
                 'code' => 'managed-server-block-not-found',
                 'message' => 'The generated MAxCache server block was not found in .htaccess.',
+            ];
+        }
+
+        if (($snippetStatus['state'] ?? 'unknown') === 'outdated') {
+            $issues[] = [
+                'severity' => 'warning',
+                'code' => 'managed-server-block-outdated',
+                'message' => 'The applied MAxCache server block is outdated. Review and explicitly apply the current snippet before relying on its exclusions.',
+                'expected_hash' => $snippetStatus['expected_hash'] ?? null,
+                'applied_hash' => $snippetStatus['applied_hash'] ?? null,
+            ];
+        }
+
+        if (($snippetStatus['state'] ?? 'unknown') === 'unknown') {
+            $issues[] = [
+                'severity' => 'warning',
+                'code' => 'managed-server-block-unverified',
+                'message' => 'The applied MAxCache server block could not be verified.',
             ];
         }
 
@@ -132,8 +154,14 @@ final class MaxcacheState
             ],
             'server' => [
                 'htaccess_path' => JPATH_ROOT . '/.htaccess',
-                'managed_block_present' => str_contains($htaccess, '# BEGIN MAx Cache for Joomla')
-                    && str_contains($htaccess, '# END MAx Cache for Joomla'),
+                'managed_block_present' => \in_array(
+                    (string) ($snippetStatus['state'] ?? 'unknown'),
+                    ['applied', 'outdated'],
+                    true
+                ),
+                'snippet_state' => (string) ($snippetStatus['state'] ?? 'unknown'),
+                'expected_hash' => $snippetStatus['expected_hash'] ?? null,
+                'applied_hash' => $snippetStatus['applied_hash'] ?? null,
                 'joomla_system_cache_enabled' => $systemCache !== null && (int) ($systemCache->enabled ?? 0) === 1,
             ],
             'issues' => $issues,
@@ -203,6 +231,11 @@ final class MaxcacheState
             CacheOperations::class => 'CacheOperations.php',
             JoomlaCacheCleaner::class => 'JoomlaCacheCleaner.php',
             AtomicFileWriter::class => 'AtomicFileWriter.php',
+            BuiltInExclusions::class => 'BuiltInExclusions.php',
+            BypassCookieNames::class => 'BypassCookieNames.php',
+            HtaccessManager::class => 'HtaccessManager.php',
+            SnippetBuilder::class => 'SnippetBuilder.php',
+            SystemCacheSettings::class => 'SystemCacheSettings.php',
         ];
 
         foreach ($classes as $class => $file) {
@@ -217,6 +250,39 @@ final class MaxcacheState
             }
 
             require_once $path;
+        }
+    }
+
+    private function getSnippetStatus(array $params, array $customExclusions): array
+    {
+        try {
+            $this->loadSystemSupport();
+            $config = Factory::getConfig();
+            $effectiveExclusions = SystemCacheSettings::mergeUrlPatterns(
+                BuiltInExclusions::filterCustomPatterns($customExclusions)
+            );
+            $snippet = SnippetBuilder::build(
+                (string) ($params['server_snippet_mode'] ?? 'mod_maxcache'),
+                [
+                    'cache_root' => (string) ($params['cache_root'] ?? (JPATH_ROOT . '/maxcache')),
+                    'site_hosts' => (string) ($params['site_hosts'] ?? ''),
+                    'exclude' => implode("\n", $effectiveExclusions),
+                    'bypass_cookies' => (string) ($params['bypass_cookies'] ?? ''),
+                    'joomla_secret' => (string) $config->get('secret', ''),
+                    'joomla_session_name' => (string) $config->get('session_name', ''),
+                    'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
+                    'allowed_query_params' => (string) ($params['allowed_query_params'] ?? ''),
+                    'write_gzip' => (int) ($params['write_gzip'] ?? 0),
+                ]
+            );
+
+            return HtaccessManager::getStatus($snippet);
+        } catch (\Throwable $exception) {
+            return [
+                'state' => 'unknown',
+                'expected_hash' => null,
+                'applied_hash' => null,
+            ];
         }
     }
 

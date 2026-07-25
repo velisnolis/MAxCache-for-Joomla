@@ -13,6 +13,7 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BuiltInExclusions.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BypassCookieNames.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetBuilder.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/HtaccessManager.php';
 
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
@@ -20,6 +21,7 @@ use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingProfile;
+use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
@@ -181,6 +183,22 @@ assertSameValue('snippet excludes configured bypass cookie', true, str_contains(
 assertSameValue('snippet excludes resolved service session cookie', true, str_contains($snippet, $sessionCookieFromService));
 assertSameValue('snippet excludes configured Joomla session-name cookie', true, str_contains($snippet, $sessionCookieFromConfiguredName));
 assertSameValue('snippet excludes Joomla frontend application session cookie', true, str_contains($snippet, $sessionCookieFromSiteApplication));
+
+$managedBlock = HtaccessManager::buildManagedBlock($snippet);
+$appliedStatus = HtaccessManager::getStatusFromContents($snippet, $managedBlock);
+$outdatedStatus = HtaccessManager::getStatusFromContents($snippet . "\n# changed", $managedBlock);
+$missingStatus = HtaccessManager::getStatusFromContents($snippet, '');
+
+assertSameValue('managed snippet status reports an exact hash match', 'applied', $appliedStatus['state']);
+assertSameValue('managed snippet status reports a stale applied hash', 'outdated', $outdatedStatus['state']);
+assertSameValue('managed snippet status reports a missing block', 'not_applied', $missingStatus['state']);
+
+$installerScript = (string) file_get_contents(__DIR__ . '/../pkg_maxcache/script.php');
+assertSameValue(
+    'package postflight invalidates Joomla plugin metadata after enabling console commands',
+    true,
+    str_contains($installerScript, "Factory::getCache('com_plugins', 'callback')->clean()")
+);
 
 $atomicDir = sys_get_temp_dir() . '/maxcache-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
 mkdir($atomicDir, 0700, true);

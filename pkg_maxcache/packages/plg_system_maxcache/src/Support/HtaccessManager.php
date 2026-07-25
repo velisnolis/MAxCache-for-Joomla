@@ -86,7 +86,11 @@ final class HtaccessManager
 
     public static function getStatus(string $snippet): array
     {
-        $contents = self::readCurrentContents();
+        return self::getStatusFromContents($snippet, self::readCurrentContents());
+    }
+
+    public static function getStatusFromContents(string $snippet, string $contents): array
+    {
         $block = self::getManagedBlock($contents);
         $expectedHash = self::buildHash($snippet);
         $appliedHash = $block !== null ? self::getManagedHash($block) : null;

@@ -26,8 +26,22 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
         $this->applyDetectedLanguageDefaults($type);
         $this->enableConsolePlugin($type);
         $this->moveMaxcachePluginToLast();
+        $this->invalidatePluginMetadataCache($type);
 
         return true;
+    }
+
+    private function invalidatePluginMetadataCache(string $type): void
+    {
+        if (!\in_array($type, ['install', 'update'], true)) {
+            return;
+        }
+
+        try {
+            Factory::getCache('com_plugins', 'callback')->clean();
+        } catch (\Throwable $exception) {
+            // Keep installation resilient if Joomla's plugin metadata cache cannot be cleaned.
+        }
     }
 
     private function enableConsolePlugin(string $type): void
