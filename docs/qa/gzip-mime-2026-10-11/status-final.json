@@ -1,0 +1,52 @@
+{
+    "installed": true,
+    "enabled": true,
+    "version": "0.1.39",
+    "cache": {
+        "root": "/var/www/html/maxcache",
+        "safe": true,
+        "exists": true,
+        "files": 10,
+        "bytes": 506
+    },
+    "response_safety": {
+        "csrf_token_files": 0,
+        "csrf_token_samples": [],
+        "unreadable_files": 0
+    },
+    "configuration": {
+        "path_mode": "host-sef",
+        "vary_language": false,
+        "purge_strategy": "targeted",
+        "server_snippet_mode": "apache",
+        "site_hosts": [
+            "maxcache.test"
+        ],
+        "bypass_cookies": [],
+        "excluded_menu_items": [],
+        "custom_exclusions": [
+            "/lab-excluded(?:/.*|$)",
+            "/lab-quoted(?:\" and space)?(?:/.*|$)",
+            "/index\\.php/lab-regex(?:/.*|$)"
+        ],
+        "built_in_exclusions": [
+            "/administrator",
+            "/api",
+            "/component/ajax",
+            "/component/users",
+            "option=com_ajax",
+            "option=com_users",
+            "format=feed|json|raw",
+            "tmpl=component"
+        ]
+    },
+    "server": {
+        "htaccess_path": "/var/www/html/.htaccess",
+        "managed_block_present": true,
+        "snippet_state": "applied",
+        "expected_hash": "fec0f6c19275be909978dcc1c751fba6d2617a6070eb93cacca3658f2f367617",
+        "applied_hash": "fec0f6c19275be909978dcc1c751fba6d2617a6070eb93cacca3658f2f367617",
+        "joomla_system_cache_enabled": false
+    },
+    "issues": []
+}
