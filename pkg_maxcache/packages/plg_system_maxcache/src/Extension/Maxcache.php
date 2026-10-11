@@ -26,6 +26,7 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\Event;
+use Joomla\Event\Priority;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
@@ -73,7 +74,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         return [
             'onAfterRoute' => 'onAfterRoute',
             'onAfterRender' => 'onAfterRender',
-            'onBeforeRespond' => 'onBeforeRespond',
+            // Run after other onBeforeRespond listeners, so the stored artifact and
+            // the privacy check see the final body and headers.
+            'onBeforeRespond' => ['onBeforeRespond', Priority::MIN],
             'onContentAfterSave' => 'onContentAfterSave',
             'onContentChangeState' => 'onContentChangeState',
             'onContentAfterDelete' => 'onContentAfterDelete',

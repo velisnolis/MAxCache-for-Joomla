@@ -70,10 +70,17 @@ function dispatchLifecycle(Maxcache $plugin, Application $app): void
             $app->respond();
         } elseif (isset($events[$name])) {
             $class = 'Joomla\\CMS\\Event\\Application\\' . ucfirst(substr($name, 2)) . 'Event';
-            $plugin->{$events[$name]}(new $class($name, ['subject' => $app]));
+            $method = \is_array($events[$name]) ? $events[$name][0] : $events[$name];
+            $plugin->{$method}(new $class($name, ['subject' => $app]));
         }
     }
 }
+
+// Another listener can still change headers or body in onBeforeRespond. Joomla
+// runs higher priorities first, so the write decision must subscribe last.
+$subscribed = Maxcache::getSubscribedEvents()['onBeforeRespond'];
+check('write decision subscribes to onBeforeRespond at minimum priority',
+    ['onBeforeRespond', \Joomla\Event\Priority::MIN], $subscribed);
 
 // A valid CSRF token is not authority: guests and users without the relevant ACL
 // must not reach any of the four administrative mutation paths.

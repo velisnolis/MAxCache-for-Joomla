@@ -23,6 +23,12 @@ namespace Joomla\Registry {
 
 namespace Joomla\Event {
     interface SubscriberInterface {}
+
+    final class Priority
+    {
+        public const MIN = -3;
+        public const NORMAL = 0;
+    }
     interface DispatcherAwareInterface {}
 
     class Event
