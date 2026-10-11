@@ -85,9 +85,9 @@ assertSameValue(
 
 assertSameValue(
     'single published language with URL prefix keeps one language directory',
-    '/cache/maxcache/www.gibaix.com/ca/agenda/index-https.html',
+    '/cache/maxcache/www.example.org/ca/agenda/index-https.html',
     cachePath([
-        'host' => 'www.gibaix.com',
+        'host' => 'www.example.org',
         'request_path' => '/ca/agenda',
         'path_mode' => 'host-sef',
         'language_sefs' => ['ca'],
