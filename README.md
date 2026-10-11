@@ -239,7 +239,8 @@ For CSRF-sensitive forms, include the reset/remind/login routes in `routes.txt`.
 The report extracts Joomla-style hidden token names twice with cache-busting query
 parameters and flags whether the token changes. The final `verdict` column gives
 a per-phase hint such as `cache-present-verify-post-purge`, `live-route-missing-after-purge`,
-or `csrf-token-stale`.
+`csrf-token-stale`, or `csrf-token-missing`. A fresh-token verdict requires both
+independent probes to return a token and for those tokens to differ.
 
 Use `--fail-on-risk` in migration automation. It exits non-zero unless every route
 in the final phase is `live-ok`, `excluded-ok`, or `csrf-token-fresh`. Redirects

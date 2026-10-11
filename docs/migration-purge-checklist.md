@@ -61,6 +61,7 @@ scripts/maxcache-route-report.sh \
 - `live-route-missing-after-purge`: purge revealed a route Joomla no longer resolves. Document this as a site route/config issue; do not restore stale cache as a fix.
 - `csrf-token-stale`: a CSRF-sensitive form returned the same Joomla token across independent cache-busted fetches. Treat this as a blocking cache bug or exclusion failure.
 - `csrf-token-fresh`: token changed and no matching static artifact was found.
+- `csrf-token-missing`: exactly one of the two independent probes returned a token. Treat the route as unresolved; both probes must contain different tokens before the form is considered safe.
 - `excluded-ok`: MAx Cache reported a bypass reason such as `excluded-url`, `excluded-menu-item`, `pagecache-plugin`, or `bypass-cookie`, and no static artifact was found.
 - `redirect-check-target`: follow the redirect and validate the target route separately.
 - `review`: inspect headers, body, logs, and route configuration before drawing conclusions.
