@@ -15,6 +15,8 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BuiltInExclusions.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/BypassCookieNames.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetBuilder.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SystemCacheSettings.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetParams.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/HtaccessManager.php';
 
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
@@ -28,6 +30,7 @@ use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
 
 $failures = [];
 $assertions = 0;
@@ -484,6 +487,56 @@ assertSameValue(
     false,
     str_contains($systemPluginSource . $htaccessManagerSource, 'Joomla\\CMS\\Filesystem\\Folder')
 );
+
+// Every client must build the snippet from the same settings mapping, or a
+// freshly applied block looks outdated from the admin status or the console.
+$snippetSettings = [
+    'server_snippet_mode' => 'apache',
+    'cache_root' => '/home/example/public_html/maxcache',
+    'site_hosts' => "www.example.org\nexample.org",
+    'exclude' => " /lab-excluded(?:/.*|$) \n\n[broken\n",
+    'bypass_cookies' => "z_cookie\na_cookie",
+    'tracking_query_params' => "utm_source\ngclid",
+    'write_gzip' => '1',
+];
+$expectedSnippetParams = [
+    'cache_root' => '/home/example/public_html/maxcache',
+    'site_hosts' => "www.example.org\nexample.org",
+    'exclude' => implode("\n", BuiltInExclusions::filterCustomPatterns(['/lab-excluded(?:/.*|$)', '[broken'])),
+    'bypass_cookies' => "z_cookie\na_cookie",
+    'joomla_secret' => '',
+    'joomla_session_name' => '',
+    'joomla_session_cookie_names' => [],
+    'tracking_query_params' => "utm_source\ngclid",
+    'write_gzip' => 1,
+];
+assertSameValue('snippet params map saved settings', $expectedSnippetParams, SnippetParams::fromSettings($snippetSettings));
+foreach (['apache', 'mod_maxcache'] as $mode) {
+    assertSameValue('central snippet matches the previous apply mapping: ' . $mode,
+        SnippetBuilder::build($mode, $expectedSnippetParams + ['allowed_query_params' => 'start']),
+        SnippetParams::buildSnippet($snippetSettings, $mode));
+}
+assertSameValue('snippet mode comes from saved settings', SnippetBuilder::build('apache', $expectedSnippetParams),
+    SnippetParams::buildSnippet($snippetSettings));
+$emptyFormSettings = array_fill_keys(SnippetParams::SETTING_KEYS, null);
+assertSameValue('unsaved form values use the plugin cache root and mod_maxcache',
+    SnippetBuilder::build('mod_maxcache', ['cache_root' => SnippetParams::DEFAULT_CACHE_ROOT]),
+    SnippetParams::buildSnippet($emptyFormSettings));
+assertSameValue('empty saved hosts emit no Apache host condition', false,
+    str_contains(SnippetParams::buildSnippet(['server_snippet_mode' => 'apache']), 'HTTP_HOST} ^'));
+
+foreach ([
+    'plg_system_maxcache/src/Extension/Maxcache.php',
+    'plg_system_maxcache/src/Field/SnippetField.php',
+    'plg_system_maxcache/src/Field/HtaccessStatusField.php',
+    'plg_console_maxcache/src/Support/MaxcacheState.php',
+] as $caller) {
+    $callerSource = (string) file_get_contents(__DIR__ . '/../pkg_maxcache/packages/' . $caller);
+    assertSameValue($caller . ' builds the snippet through SnippetParams', true,
+        str_contains($callerSource, 'SnippetParams::buildSnippet('));
+    assertSameValue($caller . ' does not build snippet params by hand', false,
+        str_contains($callerSource, 'SnippetBuilder::build('));
+}
 
 echo "\nHelper tests: " . $assertions . " assertions\n";
 

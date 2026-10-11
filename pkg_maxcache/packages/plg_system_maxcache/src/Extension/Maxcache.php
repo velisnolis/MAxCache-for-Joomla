@@ -43,7 +43,7 @@ use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
-use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
@@ -572,19 +572,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         try {
-            $snippet = SnippetBuilder::build(
-                (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
-                [
-                    'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
-                    'site_hosts' => $this->params->get('site_hosts', ''),
-                    'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
-                    'bypass_cookies' => $this->params->get('bypass_cookies', ''),
-                    ...$this->getJoomlaCookieSnippetParams(),
-                    'allowed_query_params' => $this->params->get('allowed_query_params', ''),
-                    'tracking_query_params' => $this->params->get('tracking_query_params', ''),
-                    'write_gzip' => (int) $this->params->get('write_gzip', 0),
-                ]
-            );
+            $snippet = $this->buildCurrentSnippet();
 
             if (AdminToolsManager::isAvailable()) {
                 $result = AdminToolsManager::applySnippet(
@@ -854,38 +842,13 @@ HTML;
 
     private function buildCurrentSnippet(): string
     {
-        return SnippetBuilder::build(
-            (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
-            [
-                'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
-                'site_hosts' => $this->params->get('site_hosts', ''),
-                'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
-                'bypass_cookies' => $this->params->get('bypass_cookies', ''),
-                ...$this->getJoomlaCookieSnippetParams(),
-                'allowed_query_params' => $this->params->get('allowed_query_params', ''),
-                'tracking_query_params' => $this->params->get('tracking_query_params', ''),
-                'write_gzip' => (int) $this->params->get('write_gzip', 0),
-            ]
-        );
-    }
+        $settings = [];
 
-    private function getJoomlaCookieSnippetParams(): array
-    {
-        try {
-            $config = Factory::getConfig();
-
-            return [
-                'joomla_secret' => (string) $config->get('secret', ''),
-                'joomla_session_name' => (string) $config->get('session_name', ''),
-                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
-            ];
-        } catch (\Throwable $exception) {
-            return [
-                'joomla_secret' => '',
-                'joomla_session_name' => '',
-                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
-            ];
+        foreach (SnippetParams::SETTING_KEYS as $key) {
+            $settings[$key] = $this->params->get($key);
         }
+
+        return SnippetParams::buildSnippet($settings);
     }
 
     private function getAdminReturnUrl(): string
@@ -1035,9 +998,7 @@ HTML;
 
     private function getEffectiveCustomExcludePatterns(): array
     {
-        return SystemCacheSettings::mergeUrlPatterns(BuiltInExclusions::filterCustomPatterns(
-            $this->normalizeLineList((string) $this->params->get('exclude', ''))
-        ));
+        return SnippetParams::effectiveExclusions((string) $this->params->get('exclude', ''));
     }
 
     private function isMobileRequest(): bool

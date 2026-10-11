@@ -527,7 +527,7 @@ curl_close($client);
 check(consoleStatus()['server']['snippet_state'] === 'applied', 'Real console agrees after restoring the Apache snippet');
 
 $sourceHashes = [];
-foreach (['Extension/Maxcache.php', 'Support/BypassCookieNames.php', 'Support/SnippetBuilder.php', 'Support/ResponseSafety.php'] as $source) {
+foreach (['Extension/Maxcache.php', 'Support/BypassCookieNames.php', 'Support/SnippetBuilder.php', 'Support/SnippetParams.php', 'Support/ResponseSafety.php'] as $source) {
     $sourceHashes[$source] = hash_file('sha256', JPATH_BASE . '/plugins/system/maxcache/src/' . $source);
 }
 $evidence = ['environment' => ['joomla' => (new Joomla\CMS\Version())->getShortVersion(), 'php' => PHP_VERSION,
