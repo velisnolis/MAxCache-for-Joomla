@@ -11,6 +11,20 @@ namespace Vendor\Plugin\System\Maxcache\Support;
 
 final class ResponseSafety
 {
+    public static function hasPrivateCacheControl(array $headers): bool
+    {
+        foreach ($headers as $header) {
+            if (
+                strcasecmp((string) ($header['name'] ?? ''), 'Cache-Control') === 0
+                && preg_match('/(?:^|,)\s*(?:private|no-store)(?:\s*=|\s*(?:,|$))/i', (string) ($header['value'] ?? ''))
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function findJoomlaFormToken(string $html): ?string
     {
         if ($html === '' || stripos($html, '<input') === false) {

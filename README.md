@@ -206,6 +206,32 @@ php tests/run.php
 tests/route-report.sh
 ```
 
+## Unreleased Runtime Safeguards
+
+Administrative web actions require a logged-in identity with backend access.
+Purging also requires `core.manage` on `com_cache`; applying server rules or
+changing Cache Cleaner integration requires global `core.admin`. A valid CSRF
+token remains mandatory and never substitutes for authorization. The admin purge
+button is hidden from users without purge permission.
+
+Before sending the response, MAxCache rejects explicit `Cache-Control: private`
+or `no-store`, Joomla form tokens, and a response that is no longer a guest HTML
+200. Rejected responses send `private, no-store` and remove matching plain/gzip
+artifacts, including an old gzip companion when gzip writing is disabled.
+Public HTML remains cacheable independently of Joomla's generic browser-cache
+headers, which Joomla adds later inside `respond()`.
+
+Query-string caching is temporarily disabled, including previously allowlisted
+parameters: the writer does not yet implement query-specific cache keys. The
+saved `allowed_query_params` field is retained for compatibility but has no effect;
+generated snippets no longer emit `MaxCacheQSAllowedParams`. This preserves the
+canonical URL's HTML instead of replacing it with search or pagination results.
+
+These source changes are not a release or a deployment. When deploying later,
+review/apply the updated server snippet and perform an approved, backed-up purge
+with pre/post route checks. Old artifacts served before PHP runs are not repaired
+by installing a write guard alone.
+
 ## Joomla Console Commands
 
 The package enables its companion console plugin during install/update. Run the

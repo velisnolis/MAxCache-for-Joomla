@@ -31,7 +31,9 @@ and honour their exclusion decisions.
 - `vary_language`: create separate files per active site language
 - `vary_mobile`: create separate files per mobile/desktop split
 - `bypass_cookies`: requests with these cookies skip static cache delivery
-- `allowed_query_params`: only these query parameters can participate in cache keys
+- `allowed_query_params`: reserved for future query-key support; currently ignored
+  because all requests with query parameters bypass static writes and generated
+  snippets do not enable query variants
 - `write_gzip`: write precompressed output alongside HTML
 - `purge_strategy`: full purge or targeted purge
 - `debug_headers`: add MAx Cache debug headers
@@ -52,7 +54,7 @@ Reject when any of the following are true:
 - excluded menu item
 - excluded URL pattern
 - bypass cookie present
-- unsupported query parameters present
+- any query parameters present, even if saved in `allowed_query_params`
 - response expected to be non-HTML
 
 Cookie policy:
@@ -76,9 +78,14 @@ Examples:
 Disable dynamic gzip in-app before writing cache artifacts so the plugin stores the
 canonical uncompressed HTML body.
 
-5. `onAfterRespond`
-Write the rendered HTML to the deterministic target path and optionally create a
-gzip companion file.
+5. `onBeforeRespond`
+Recheck guest/message state and the actual HTTP response status before writing.
+Reject explicit `private`/`no-store` response directives or HTML containing a
+Joomla form token; send privacy/bypass headers and remove both older plain/gzip
+artifacts. Otherwise write the rendered HTML to the deterministic target path and
+optionally create a gzip companion file. The safety decision and debug headers
+must precede sending the response. Joomla's generic browser-cache headers are
+added later by `respond()` and do not determine static write eligibility.
 
 6. Purge hooks
 Listen to content, category, menu, module, and plugin lifecycle events to invalidate

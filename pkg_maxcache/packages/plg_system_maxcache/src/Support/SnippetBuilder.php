@@ -54,7 +54,6 @@ HTACCESS);
         $cachePathRegex = self::buildPublicPathRegex($cacheRoot);
         $cookies = self::buildCookieRegex($params);
         $uriExclusions = self::buildUriExclusions($params);
-        $queryParams = self::normalizeLineList((string) ($params['allowed_query_params'] ?? ''));
         $gzipSuffix = !empty($params['write_gzip']) ? '{GZIP_SUFFIX}' : '';
 
         if ($cachePathRegex !== '') {
@@ -77,10 +76,6 @@ HTACCESS);
 
         if ($cookies !== '') {
             $lines[] = '    MaxCacheExcludeCookie "' . $cookies . '"';
-        }
-
-        if ($queryParams !== []) {
-            $lines[] = '    MaxCacheQSAllowedParams ' . implode(' ', $queryParams);
         }
 
         $lines[] = '</IfModule>';
