@@ -206,6 +206,11 @@ php tests/run.php
 tests/route-report.sh
 ```
 
+`tests/run.php` includes the runtime event regressions in `tests/runtime.php`.
+They use Joomla API doubles and an isolated temporary filesystem, not a live
+Joomla installation. They verify denied/authorized admin actions, transmitted
+safety headers, plain/gzip artifacts, and query requests preserving canonical HTML.
+
 ## Unreleased Runtime Safeguards
 
 Administrative web actions require a logged-in identity with backend access.

@@ -30,10 +30,12 @@ use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 
 $failures = [];
+$assertions = 0;
 
 function assertSameValue(string $label, mixed $expected, mixed $actual): void
 {
-    global $failures;
+    global $failures, $assertions;
+    ++$assertions;
 
     if ($expected === $actual) {
         echo '.';
@@ -155,13 +157,18 @@ assertSameValue(
     )
 );
 
-$sessionCookieFromConfiguredName = md5('secret-value' . 'custom-session-name');
-$sessionCookieFromSiteApplication = md5('secret-value' . 'Joomla\\CMS\\Application\\SiteApplication');
+$sessionCookieFromConfiguredName = md5(md5('secret-value' . 'custom-session-name'));
+$sessionCookieFromSite = md5(md5('secret-value' . 'site'));
+$sessionCookieFromAdministrator = md5(md5('secret-value' . 'administrator'));
+$sessionCookieFromSiteApplication = md5(md5('secret-value' . 'Joomla\\CMS\\Application\\SiteApplication'));
+$sessionCookieFromAdministratorApplication = md5(md5('secret-value' . 'Joomla\\CMS\\Application\\AdministratorApplication'));
 $sessionCookieFromService = '44c05088706fb5e957c981e7d16d5a4d';
 
 assertSameValue(
     'effective bypass cookies include configured cookies, resolved service session cookies, and Joomla frontend session cookies',
-    ['joomla_user_state', $sessionCookieFromService, $sessionCookieFromConfiguredName, $sessionCookieFromSiteApplication],
+    ['joomla_user_state', $sessionCookieFromService, $sessionCookieFromConfiguredName,
+        $sessionCookieFromSite, $sessionCookieFromAdministrator,
+        $sessionCookieFromSiteApplication, $sessionCookieFromAdministratorApplication],
     BypassCookieNames::mergeWithJoomlaSessionCookies(
         ['joomla_user_state'],
         'secret-value',
@@ -169,6 +176,85 @@ assertSameValue(
         [$sessionCookieFromService]
     )
 );
+
+foreach (['', 'site', 'administrator', 'shared', 'custom-session-name'] as $sessionName) {
+    $names = BypassCookieNames::joomlaSessionCookieNames('secret-value', $sessionName);
+    assertSameValue('frontend cookie survives snippet generation from ' . ($sessionName ?: 'no application'), true,
+        in_array($sessionCookieFromSite, $names, true));
+    assertSameValue('backend cookie survives snippet generation from ' . ($sessionName ?: 'no application'), true,
+        in_array($sessionCookieFromAdministrator, $names, true));
+    assertSameValue('session cookie list is deduplicated: ' . $sessionName, count(array_unique($names)), count($names));
+    if ($sessionName !== '') {
+        assertSameValue('configured/shared session uses Joomla double hash: ' . $sessionName, true,
+            in_array(md5(md5('secret-value' . $sessionName)), $names, true));
+    }
+}
+assertSameValue('no cookie hashes are guessed without a Joomla secret', [],
+    BypassCookieNames::joomlaSessionCookieNames('', 'site'));
+
+// This standalone helper suite does not bootstrap Joomla. Foreign session
+// construction can change PHP's global session name, so make that observable.
+class MaxcacheCookieFactoryFixture
+{
+    public static int $containerCalls = 0;
+    public static ?object $application = null;
+
+    public static function getContainer(): never
+    {
+        ++self::$containerCalls;
+        throw new LogicException('Foreign session services must not be requested.');
+    }
+
+    public static function getApplication(): object
+    {
+        return self::$application ?? throw new LogicException('Application is not bootstrapped.');
+    }
+}
+class_alias(MaxcacheCookieFactoryFixture::class, 'Joomla\\CMS\\Factory');
+MaxcacheCookieFactoryFixture::$application = new class {
+    public function getSession(): object
+    {
+        return new class {
+            public function getName(): string { return 'current-runtime-cookie'; }
+        };
+    }
+};
+assertSameValue('resolved cookie names use the current application session', ['current-runtime-cookie'],
+    BypassCookieNames::factorySessionCookieNames());
+assertSameValue('cookie discovery never constructs another client session', 0, MaxcacheCookieFactoryFixture::$containerCalls);
+MaxcacheCookieFactoryFixture::$application = new class {
+    public int $sessionReads = 0;
+    public function isClient(string $client): bool { return $client === 'cli'; }
+    public function getSession(): object
+    {
+        ++$this->sessionReads;
+        return new class {
+            public function getName(): string { return 'cli-only-runtime-cookie'; }
+        };
+    }
+};
+assertSameValue('console runtime sessions are not browser bypass cookies', [],
+    BypassCookieNames::factorySessionCookieNames());
+assertSameValue('browser cookie discovery does not open the console runtime session', 0,
+    MaxcacheCookieFactoryFixture::$application->sessionReads);
+MaxcacheCookieFactoryFixture::$application = null;
+assertSameValue('partially bootstrapped previews tolerate a missing application', [],
+    BypassCookieNames::factorySessionCookieNames());
+
+// Equivalent cookie sets must not make the applied snippet look outdated
+// when it is checked from a different Joomla client or the console.
+$cookieSnippetParams = ['joomla_secret' => 'secret-value', 'bypass_cookies' => "z_cookie\na_cookie"];
+foreach (['apache', 'mod_maxcache'] as $mode) {
+    $canonicalSnippet = SnippetBuilder::build($mode, $cookieSnippetParams);
+    foreach (['site', 'administrator', 'Joomla\\CMS\\Application\\SiteApplication',
+        'Joomla\\CMS\\Application\\AdministratorApplication'] as $clientName) {
+        assertSameValue('snippet is stable across Joomla cookie contexts: ' . $mode . ' ' . $clientName,
+            $canonicalSnippet, SnippetBuilder::build($mode, $cookieSnippetParams + [
+                'joomla_session_name' => $clientName,
+                'joomla_session_cookie_names' => [md5(md5('secret-value' . $clientName))],
+            ]));
+    }
+}
 
 $snippet = SnippetBuilder::buildModMaxcacheSnippet([
     'cache_root' => '/var/cache/joomla-maxcache',
@@ -187,6 +273,45 @@ assertSameValue('snippet excludes configured bypass cookie', true, str_contains(
 assertSameValue('snippet excludes resolved service session cookie', true, str_contains($snippet, $sessionCookieFromService));
 assertSameValue('snippet excludes configured Joomla session-name cookie', true, str_contains($snippet, $sessionCookieFromConfiguredName));
 assertSameValue('snippet excludes Joomla frontend application session cookie', true, str_contains($snippet, $sessionCookieFromSiteApplication));
+assertSameValue('mod_maxcache snippet excludes the default frontend cookie', true, str_contains($snippet, $sessionCookieFromSite));
+assertSameValue('mod_maxcache snippet excludes the default backend cookie', true, str_contains($snippet, $sessionCookieFromAdministrator));
+
+$gzipSnippet = SnippetBuilder::build('mod_maxcache', ['write_gzip' => 1]);
+assertSameValue('gzip snippet declares HTML type for the actual writer extension', true,
+    str_contains($gzipSnippet, 'AddType text/html .html_gzip'));
+assertSameValue('gzip snippet declares compression for the actual writer extension', true,
+    str_contains($gzipSnippet, 'AddEncoding gzip .html_gzip'));
+assertSameValue('gzip MIME directives are guarded by the Apache MIME module', true,
+    str_contains($gzipSnippet, '<IfModule mod_mime.c>'));
+assertSameValue('gzip enabled selects the CloudLinux gzip suffix', true,
+    str_contains($gzipSnippet, '.html{GZIP_SUFFIX}'));
+foreach (['mod_maxcache', 'apache'] as $mode) {
+    $plainSnippet = SnippetBuilder::build($mode, ['write_gzip' => 0]);
+    assertSameValue('gzip disabled does not change encoding rules: ' . $mode, false,
+        str_contains($plainSnippet, 'AddEncoding'));
+    assertSameValue('gzip disabled does not enable compressed reads: ' . $mode, false,
+        str_contains($plainSnippet, '{GZIP_SUFFIX}'));
+}
+
+$apacheSnippet = SnippetBuilder::buildApacheSnippet([
+    'cache_root' => '/var/cache/joomla-maxcache',
+    'exclude' => implode("\n", ['/lab-excluded(?:/.*|$)', '/with space',
+        '/lab-quoted(?:" and space)?(?:/.*|$)', '/index\\.php/lab-regex(?:/.*|$)', '[broken']),
+    'joomla_secret' => 'secret-value',
+    'joomla_session_name' => 'administrator',
+]);
+assertSameValue('Apache snippet excludes frontend cookies when built from administrator', true, str_contains($apacheSnippet, $sessionCookieFromSite));
+assertSameValue('Apache snippet keeps built-in sensitive URI exclusions', true, str_contains($apacheSnippet, 'component/users'));
+assertSameValue('Apache snippet keeps valid configured URI exclusions', true, str_contains($apacheSnippet, '/lab-excluded(?:/.*|$)'));
+assertSameValue('Apache snippet quotes exclusion patterns containing spaces', true, str_contains($apacheSnippet, "RewriteCond %{REQUEST_URI} '!"));
+assertSameValue('Apache snippet preserves double quotes inside single-quoted patterns', true, str_contains($apacheSnippet, '(?:" and space)?'));
+assertSameValue('Apache snippet preserves regex backslashes through config parsing', true, str_contains($apacheSnippet, '/index\\.php/lab-regex'));
+assertSameValue('Apache snippet omits invalid configured URI exclusions', false, str_contains($apacheSnippet, '[broken'));
+$unsafeQuotedSnippet = SnippetBuilder::buildApacheSnippet(['exclude' => "/lab[\"']"]);
+assertSameValue('Apache disables static serving when neither quote delimiter is safe', true,
+    str_contains($unsafeQuotedSnippet, 'RewriteCond %{REQUEST_URI} "!(?:^)" [NC]'));
+assertSameValue('Apache explains how to recover safe static serving', true,
+    str_contains($unsafeQuotedSnippet, 'encode regex quotes as \\x22/\\x27'));
 
 $managedBlock = HtaccessManager::buildManagedBlock($snippet);
 $appliedStatus = HtaccessManager::getStatusFromContents($snippet, $managedBlock);
@@ -204,6 +329,20 @@ $reorderedTokenInput = "<input value='1' class='form-control' name='" . strtoupp
 assertSameValue('response safety detects a Joomla form token', $token, ResponseSafety::findJoomlaFormToken($tokenInput));
 assertSameValue('response safety detects reordered and uppercase Joomla token attributes', $token, ResponseSafety::findJoomlaFormToken($reorderedTokenInput));
 assertSameValue('response safety ignores ordinary hidden inputs', false, ResponseSafety::containsJoomlaFormToken('<input type="hidden" name="option" value="1">'));
+
+foreach ([
+    ['public, max-age=600', false],
+    ['no-cache', false],
+    ['max-age=60, NO-STORE', true],
+    ['PRIVATE="Set-Cookie"', true],
+    ['s-maxage=60, public', false],
+    ['x-private=1', false],
+] as [$control, $private]) {
+    assertSameValue('response safety parses privacy directives: ' . $control, $private,
+        ResponseSafety::hasPrivateCacheControl([['name' => 'Cache-Control', 'value' => $control]]));
+}
+assertSameValue('privacy words in unrelated headers do not disable caching', false,
+    ResponseSafety::hasPrivateCacheControl([['name' => 'X-Debug', 'value' => 'private, no-store']]));
 
 $installerScript = (string) file_get_contents(__DIR__ . '/../pkg_maxcache/script.php');
 assertSameValue(
@@ -302,7 +441,7 @@ assertSameValue(
     str_contains($systemPluginSource . $htaccessManagerSource, 'Joomla\\CMS\\Filesystem\\Folder')
 );
 
-echo "\n";
+echo "\nHelper tests: " . $assertions . " assertions\n";
 
 if ($failures !== []) {
     foreach ($failures as $failure) {
@@ -312,6 +451,14 @@ if ($failures !== []) {
     }
 
     exit(1);
+}
+
+// Runtime regressions use isolated Joomla API doubles; do not load them into
+// this helper-test process or a real Joomla installation.
+passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/runtime.php'), $runtimeStatus);
+
+if ($runtimeStatus !== 0) {
+    exit($runtimeStatus);
 }
 
 echo "All tests passed.\n";
