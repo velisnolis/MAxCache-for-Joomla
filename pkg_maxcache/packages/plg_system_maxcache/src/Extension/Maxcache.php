@@ -948,7 +948,13 @@ HTML;
             $internalUrl .= '?' . Uri::buildQuery($this->router->getVars());
         }
 
-        return RegexPatternMatcher::matchesAny($exclusions, $externalUrl . ' ' . $internalUrl);
+        // Match anchored patterns against real individual subjects, including
+        // the public path used by the server snippet. Keep the old combined
+        // subject as a compatibility fallback for existing non-anchored rules.
+        return RegexPatternMatcher::matchesAny($exclusions, $externalUrl)
+            || RegexPatternMatcher::matchesAny($exclusions, Uri::getInstance()->getPath())
+            || RegexPatternMatcher::matchesAny($exclusions, $internalUrl)
+            || RegexPatternMatcher::matchesAny($exclusions, $externalUrl . ' ' . $internalUrl);
     }
 
     private function hasBypassCookie(): bool

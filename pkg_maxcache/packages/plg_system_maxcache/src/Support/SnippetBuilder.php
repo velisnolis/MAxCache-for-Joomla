@@ -24,6 +24,18 @@ final class SnippetBuilder
         $cachePublicPath = self::buildCachePublicPath($params);
         $cachePathRegex = self::buildPublicPathRegex($cachePublicPath);
         $cookies = self::buildCookieRegex($params);
+        $uriExclusions = self::buildUriExclusions($params);
+        // mod_rewrite's parser preserves regex backslashes but does not escape
+        // its quote delimiter. Pick an absent delimiter; if neither is safe,
+        // disable static serving rather than omit exclusions or emit bad config.
+        $quote = str_contains($uriExclusions, '"') ? "'" : '"';
+        $exclusionNote = '';
+        if (str_contains($uriExclusions, $quote)) {
+            $uriExclusions = '^';
+            $quote = '"';
+            $exclusionNote = '    # Static serving disabled: encode regex quotes as \\x22/\\x27.';
+        }
+        $uriCondition = $quote . '!(?:' . $uriExclusions . ')' . $quote;
         $hostCondition = self::buildHostCondition($params);
         $cookieLine = $cookies !== ''
             ? '    RewriteCond %{HTTP_COOKIE} !(^|;\\s*)(' . $cookies . ')(=|;|$) [NC]'
@@ -38,7 +50,8 @@ final class SnippetBuilder
     # Adapt paths to your vhost layout before enabling.
 {$hostCondition}
     RewriteCond %{REQUEST_METHOD} =GET
-    RewriteCond %{REQUEST_URI} !^/administrator/
+{$exclusionNote}
+    RewriteCond %{REQUEST_URI} {$uriCondition} [NC]
     RewriteCond %{REQUEST_URI} !^{$cachePathRegex}(?:/.*|$) [NC]
     RewriteCond %{QUERY_STRING} ^$
 {$cookieLine}
@@ -114,6 +127,10 @@ HTACCESS);
             (string) ($params['joomla_session_name'] ?? ''),
             $sessionCookieNames
         );
+
+        // Cookie order has no matching semantics. Keep snippet hashes stable
+        // across the frontend, administrator and console session contexts.
+        sort($cookies, SORT_STRING);
 
         return implode('|', array_map(static fn (string $cookie): string => preg_quote($cookie, '#'), $cookies));
     }
