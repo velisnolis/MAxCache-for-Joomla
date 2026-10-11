@@ -232,6 +232,18 @@ saved `allowed_query_params` field is retained for compatibility but has no effe
 generated snippets no longer emit `MaxCacheQSAllowedParams`. This preserves the
 canonical URL's HTML instead of replacing it with search or pagination results.
 
+`tracking_query_params` is an optional, empty-by-default list of parameters that
+never change server-rendered HTML, such as `utm_source`, `gclid` or `fbclid`. When a
+request's query contains only these names, the server rules serve the canonical
+cached page; PHP still never writes from such a request. In Apache mode, any other
+key falls through to Joomla. In `mod_maxcache` mode the snippet lists the names in
+both `MaxCacheQSAllowedParams` and `MaxCacheQSIgnoredParams`, relying on CloudLinux's
+documented behaviour: a tracking-only query yields an empty `{QS_SUFFIX}`, and other
+keys keep a `#query` suffix the writer never creates. That behaviour has not yet been
+verified on a server, so validate it on staging before enabling the list there.
+Leave the list empty when a page reads these parameters in PHP, for example a form
+field prefilled from `utm_source`. The names `p` and `maxcache_probe` are ignored.
+
 These source changes are not a release or a deployment. When deploying later,
 review/apply the updated server snippet and perform an approved, backed-up purge
 with pre/post route checks. Old artifacts served before PHP runs are not repaired

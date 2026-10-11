@@ -139,7 +139,7 @@ final class Pkg_MaxcacheInstallerScript extends InstallerScript
     {
         $changed = false;
 
-        foreach (['bypass_cookies', 'site_hosts', 'allowed_query_params', 'exclude'] as $key) {
+        foreach (['bypass_cookies', 'site_hosts', 'allowed_query_params', 'tracking_query_params', 'exclude'] as $key) {
             if (!isset($params[$key]) || !\is_string($params[$key])) {
                 continue;
             }

@@ -33,6 +33,7 @@ final class SnippetField extends FormField
             'bypass_cookies' => $this->form->getValue('bypass_cookies', 'params'),
             ...$this->getJoomlaCookieSnippetParams(),
             'allowed_query_params' => $this->form->getValue('allowed_query_params', 'params'),
+            'tracking_query_params' => $this->form->getValue('tracking_query_params', 'params'),
             'write_gzip' => (int) $this->form->getValue('write_gzip', 'params', 0),
         ];
 

@@ -144,6 +144,15 @@
 				/>
 
 				<field
+					name="tracking_query_params"
+					type="textarea"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_TRACKING_QUERY_PARAMS_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_TRACKING_QUERY_PARAMS_DESC"
+					rows="6"
+					filter="raw"
+				/>
+
+				<field
 					name="write_gzip"
 					type="radio"
 					layout="joomla.form.field.radio.switcher"

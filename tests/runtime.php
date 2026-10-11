@@ -284,6 +284,14 @@ foreach (['/news?start=10', '/news?start[]=10', '/news?start=10&limit=20', '/new
     check($request . ' reports query bypass', 'query-params', sentHeader($app, 'X-MAxCache-Reason'));
 }
 
+// The server may serve the canonical page for tracking-only queries, but PHP
+// must still never write from a request URL that carries a query.
+AtomicFileWriter::write($artifact, $publicBody);
+$app = siteRequest('/news?utm_source=newsletter', '<html>tracking render</html>', [],
+    ['tracking_query_params' => 'utm_source']);
+check('tracking-only query preserves canonical HTML', $publicBody, file_get_contents($artifact));
+check('tracking-only query reports query bypass', 'query-params', sentHeader($app, 'X-MAxCache-Reason'));
+
 $app = siteRequest('/fresh?start=10', '<html>first query visit</html>', [], ['allowed_query_params' => 'start']);
 check('first query visit creates no canonical artifact', false, is_file(JPATH_ROOT . '/maxcache/example.test/fresh/index-https.html'));
 

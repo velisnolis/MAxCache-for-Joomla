@@ -34,6 +34,8 @@ and honour their exclusion decisions.
 - `allowed_query_params`: reserved for future query-key support; currently ignored
   because all requests with query parameters bypass static writes and generated
   snippets do not enable query variants
+- `tracking_query_params`: optional; server rules serve the canonical artifact when a
+  query contains only these names. PHP never writes from such requests
 - `write_gzip`: write precompressed output alongside HTML
 - `purge_strategy`: full purge or targeted purge
 - `debug_headers`: add MAx Cache debug headers

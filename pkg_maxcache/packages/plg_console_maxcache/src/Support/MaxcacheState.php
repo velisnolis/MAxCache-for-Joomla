@@ -290,6 +290,7 @@ final class MaxcacheState
                     'joomla_session_name' => (string) $config->get('session_name', ''),
                     'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
                     'allowed_query_params' => (string) ($params['allowed_query_params'] ?? ''),
+                    'tracking_query_params' => (string) ($params['tracking_query_params'] ?? ''),
                     'write_gzip' => (int) ($params['write_gzip'] ?? 0),
                 ]
             );

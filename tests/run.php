@@ -313,6 +313,50 @@ assertSameValue('Apache disables static serving when neither quote delimiter is 
 assertSameValue('Apache explains how to recover safe static serving', true,
     str_contains($unsafeQuotedSnippet, 'encode regex quotes as \\x22/\\x27'));
 
+// Tracking-only queries may receive the canonical page. Without a configured
+// list the snippets stay byte-identical, so existing applied hashes remain valid.
+foreach (['apache', 'mod_maxcache'] as $mode) {
+    assertSameValue('empty tracking list keeps the snippet unchanged: ' . $mode,
+        SnippetBuilder::build($mode, []), SnippetBuilder::build($mode, ['tracking_query_params' => '']));
+}
+assertSameValue('empty tracking list keeps Apache query bypass strict', true,
+    str_contains(SnippetBuilder::buildApacheSnippet([]), 'RewriteCond %{QUERY_STRING} ^$'));
+assertSameValue('empty tracking list emits no mod_maxcache query directives', false,
+    str_contains(SnippetBuilder::buildModMaxcacheSnippet([]), 'MaxCacheQS'));
+
+$trackingParams = "utm_source\nfbclid\np\nmaxcache_probe\nbad name\nutm_source\nutm.id";
+$trackingApache = SnippetBuilder::buildApacheSnippet(['tracking_query_params' => $trackingParams]);
+preg_match('/RewriteCond %\{QUERY_STRING\} (\S+)/', $trackingApache, $queryMatch);
+$queryRegex = '~' . ($queryMatch[1] ?? '^$') . '~';
+foreach ([
+    '' => true,
+    'utm_source=newsletter' => true,
+    'fbclid=abc&utm_source=x' => true,
+    'utm.id=7&' => true,
+    'fbclid' => true,
+    'utm_source=x&start=10' => false,
+    'start=10&utm_source=x' => false,
+    'start=10' => false,
+    'utm_source_extra=1' => false,
+    'p=customizer' => false,
+    'maxcache_probe=1' => false,
+    'bad%20name=1' => false,
+    '&' => false,
+] as $query => $served) {
+    assertSameValue('Apache tracking query condition for "' . $query . '"', $served,
+        preg_match($queryRegex, (string) $query) === 1);
+}
+
+$trackingMod = SnippetBuilder::buildModMaxcacheSnippet(['tracking_query_params' => $trackingParams]);
+assertSameValue('mod_maxcache allows only valid tracking keys, sorted', true,
+    str_contains($trackingMod, "MaxCacheQSAllowedParams fbclid utm.id utm_source\n"));
+assertSameValue('mod_maxcache strips the same tracking keys from the cache key', true,
+    str_contains($trackingMod, "MaxCacheQSIgnoredParams fbclid utm.id utm_source\n"));
+assertSameValue('mod_maxcache keeps the query suffix for other keys', true,
+    str_contains($trackingMod, '{REQUEST_URI}{QS_SUFFIX}/index'));
+assertSameValue('tracking list order does not change the snippet', $trackingMod,
+    SnippetBuilder::buildModMaxcacheSnippet(['tracking_query_params' => "utm.id\nutm_source\nfbclid"]));
+
 $managedBlock = HtaccessManager::buildManagedBlock($snippet);
 $appliedStatus = HtaccessManager::getStatusFromContents($snippet, $managedBlock);
 $outdatedStatus = HtaccessManager::getStatusFromContents($snippet . "\n# changed", $managedBlock);
