@@ -91,6 +91,16 @@ HTACCESS);
             $lines[] = '    MaxCacheExcludeCookie "' . $cookies . '"';
         }
 
+        if ($gzipSuffix !== '') {
+            // mod_maxcache selects the writer's .html_gzip file, but does not
+            // reliably declare its MIME type/encoding on every Apache setup.
+            $lines[] = '';
+            $lines[] = '    <IfModule mod_mime.c>';
+            $lines[] = '        AddType text/html .html_gzip';
+            $lines[] = '        AddEncoding gzip .html_gzip';
+            $lines[] = '    </IfModule>';
+        }
+
         $lines[] = '</IfModule>';
 
         return implode("\n", $lines);

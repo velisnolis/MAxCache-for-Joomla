@@ -578,6 +578,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                     'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                     ...$this->getJoomlaCookieSnippetParams(),
                     'allowed_query_params' => $this->params->get('allowed_query_params', ''),
+                    'write_gzip' => (int) $this->params->get('write_gzip', 0),
                 ]
             );
 
@@ -858,6 +859,7 @@ HTML;
                 'bypass_cookies' => $this->params->get('bypass_cookies', ''),
                 ...$this->getJoomlaCookieSnippetParams(),
                 'allowed_query_params' => $this->params->get('allowed_query_params', ''),
+                'write_gzip' => (int) $this->params->get('write_gzip', 0),
             ]
         );
     }
