@@ -166,6 +166,13 @@ route_verdict() {
     return
   fi
 
+  # After the purge, the probe itself can make the writer store a fresh artifact.
+  # A stored response proves Joomla rendered the route live, not a stale file.
+  if [[ "$phase" == "post" && "$state" == "stored" && "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "live-ok"
+    return
+  fi
+
   if [[ "$status" =~ ^2[0-9][0-9]$ && "$files" != "0" ]]; then
     echo "cache-present-verify-post-purge"
     return
