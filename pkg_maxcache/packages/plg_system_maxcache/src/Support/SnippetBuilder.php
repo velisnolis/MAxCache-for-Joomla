@@ -24,7 +24,28 @@ final class SnippetBuilder
         $cachePublicPath = self::buildCachePublicPath($params);
         $cachePathRegex = self::buildPublicPathRegex($cachePublicPath);
         $cookies = self::buildCookieRegex($params);
+        $uriExclusions = self::buildUriExclusions($params);
+        // mod_rewrite's parser preserves regex backslashes but does not escape
+        // its quote delimiter. Pick an absent delimiter; if neither is safe,
+        // disable static serving rather than omit exclusions or emit bad config.
+        $quote = str_contains($uriExclusions, '"') ? "'" : '"';
+        $exclusionNote = '';
+        if (str_contains($uriExclusions, $quote)) {
+            $uriExclusions = '^';
+            $quote = '"';
+            $exclusionNote = '    # Static serving disabled: encode regex quotes as \\x22/\\x27.';
+        }
+        $uriCondition = $quote . '!(?:' . $uriExclusions . ')' . $quote;
         $hostCondition = self::buildHostCondition($params);
+        $trackingParams = self::buildTrackingQueryParams($params);
+        // A query made only of tracking keys may receive the canonical page;
+        // any other key reaches Joomla. Without tracking keys, keep ^$.
+        $queryCondition = $trackingParams === []
+            ? '^$'
+            : '^(?:(?:' . implode('|', array_map(
+                static fn (string $name): string => preg_quote($name, '#'),
+                $trackingParams
+            )) . ')(?:=[^&]*)?(?:&|$))*$';
         $cookieLine = $cookies !== ''
             ? '    RewriteCond %{HTTP_COOKIE} !(^|;\\s*)(' . $cookies . ')(=|;|$) [NC]'
             : '';
@@ -38,9 +59,10 @@ final class SnippetBuilder
     # Adapt paths to your vhost layout before enabling.
 {$hostCondition}
     RewriteCond %{REQUEST_METHOD} =GET
-    RewriteCond %{REQUEST_URI} !^/administrator/
+{$exclusionNote}
+    RewriteCond %{REQUEST_URI} {$uriCondition} [NC]
     RewriteCond %{REQUEST_URI} !^{$cachePathRegex}(?:/.*|$) [NC]
-    RewriteCond %{QUERY_STRING} ^$
+    RewriteCond %{QUERY_STRING} {$queryCondition}
 {$cookieLine}
     RewriteCond {$cacheRoot}/%{HTTP_HOST}%{REQUEST_URI}/index-https.html -f
     RewriteRule ^ {$cacheRoot}/%{HTTP_HOST}%{REQUEST_URI}/index-https.html [L]
@@ -54,8 +76,8 @@ HTACCESS);
         $cachePathRegex = self::buildPublicPathRegex($cacheRoot);
         $cookies = self::buildCookieRegex($params);
         $uriExclusions = self::buildUriExclusions($params);
-        $queryParams = self::normalizeLineList((string) ($params['allowed_query_params'] ?? ''));
         $gzipSuffix = !empty($params['write_gzip']) ? '{GZIP_SUFFIX}' : '';
+        $trackingParams = self::buildTrackingQueryParams($params);
 
         if ($cachePathRegex !== '') {
             $uriExclusions = $uriExclusions !== ''
@@ -79,8 +101,23 @@ HTACCESS);
             $lines[] = '    MaxCacheExcludeCookie "' . $cookies . '"';
         }
 
-        if ($queryParams !== []) {
-            $lines[] = '    MaxCacheQSAllowedParams ' . implode(' ', $queryParams);
+        if ($trackingParams !== []) {
+            // mod_maxcache only considers a query when an allowed key is present,
+            // then strips ignored keys from {QS_SUFFIX}. Listing the same names in
+            // both maps tracking-only URLs to the canonical file; any other key
+            // keeps a #query suffix the writer never creates, so Joomla serves it.
+            $lines[] = '    MaxCacheQSAllowedParams ' . implode(' ', $trackingParams);
+            $lines[] = '    MaxCacheQSIgnoredParams ' . implode(' ', $trackingParams);
+        }
+
+        if ($gzipSuffix !== '') {
+            // mod_maxcache selects the writer's .html_gzip file, but does not
+            // reliably declare its MIME type/encoding on every Apache setup.
+            $lines[] = '';
+            $lines[] = '    <IfModule mod_mime.c>';
+            $lines[] = '        AddType text/html .html_gzip';
+            $lines[] = '        AddEncoding gzip .html_gzip';
+            $lines[] = '    </IfModule>';
         }
 
         $lines[] = '</IfModule>';
@@ -120,6 +157,10 @@ HTACCESS);
             $sessionCookieNames
         );
 
+        // Cookie order has no matching semantics. Keep snippet hashes stable
+        // across the frontend, administrator and console session contexts.
+        sort($cookies, SORT_STRING);
+
         return implode('|', array_map(static fn (string $cookie): string => preg_quote($cookie, '#'), $cookies));
     }
 
@@ -133,6 +174,20 @@ HTACCESS);
         )));
 
         return implode('|', $patterns);
+    }
+
+    private static function buildTrackingQueryParams(array $params): array
+    {
+        // Reserved names keep the YOOtheme customizer and route-report probes dynamic.
+        $names = array_filter(
+            self::normalizeLineList((string) ($params['tracking_query_params'] ?? '')),
+            static fn (string $name): bool => preg_match('/^[A-Za-z0-9_.-]+$/', $name) === 1
+                && !\in_array($name, ['p', 'maxcache_probe'], true)
+        );
+        $names = array_values(array_unique($names));
+        sort($names, SORT_STRING);
+
+        return $names;
     }
 
     private static function buildHostCondition(array $params): string

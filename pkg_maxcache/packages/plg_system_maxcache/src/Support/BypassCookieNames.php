@@ -61,30 +61,17 @@ final class BypassCookieNames
     {
         $names = [];
 
-        try {
-            $container = Factory::getContainer();
-
-            foreach (['session.web.site', 'session.web.administrator'] as $serviceName) {
-                try {
-                    if (method_exists($container, 'has') && !$container->has($serviceName)) {
-                        continue;
-                    }
-
-                    $session = $container->get($serviceName);
-
-                    if (is_object($session) && method_exists($session, 'getName')) {
-                        $names[] = (string) $session->getName();
-                    }
-                } catch (\Throwable $exception) {
-                    continue;
-                }
-            }
-        } catch (\Throwable $exception) {
-            // Joomla can be partially bootstrapped when field previews are rendered.
-        }
-
+        // Only read the current session. Constructing another client's service
+        // shares config and PHP session state, so it cannot discover that
+        // client's effective cookie reliably and may alter the current session.
         try {
             $application = Factory::getApplication();
+
+            // Console uses RuntimeStorage, not an HTTP cookie. Including its
+            // session name makes CLI status disagree with a web-applied block.
+            if (is_object($application) && method_exists($application, 'isClient') && $application->isClient('cli')) {
+                return [];
+            }
 
             if (is_object($application) && method_exists($application, 'getSession')) {
                 $session = $application->getSession();
@@ -111,11 +98,18 @@ final class BypassCookieNames
 
         $seeds = [
             $sessionName,
+            'site',
+            'administrator',
             'Joomla\\CMS\\Application\\SiteApplication',
+            'Joomla\\CMS\\Application\\AdministratorApplication',
         ];
 
+        // Joomla 5/6's provider hashes secret + configured/client name; CMS
+        // Session hashes it again for Joomla 3 compatibility. Include both
+        // clients independently of the application generating the snippet.
+        // Class seeds cover session services resolved before CMS app setup.
         return self::normalize(array_map(
-            static fn (string $seed): string => $seed !== '' ? md5($secret . $seed) : '',
+            static fn (string $seed): string => $seed !== '' ? md5(md5($secret . $seed)) : '',
             $seeds
         ));
     }

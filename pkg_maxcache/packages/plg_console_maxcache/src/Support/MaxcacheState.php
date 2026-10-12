@@ -7,7 +7,6 @@
 
 namespace Vendor\Plugin\Console\Maxcache\Support;
 
-use Joomla\CMS\Factory;
 use Joomla\Database\DatabaseInterface;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
@@ -17,6 +16,7 @@ use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
 \defined('_JEXEC') or die;
@@ -69,7 +69,7 @@ final class MaxcacheState
         ));
         $systemCache = $this->loadPlugin('system', 'cache');
         $issues = [];
-        $snippetStatus = $this->getSnippetStatus($params, $customExclusions);
+        $snippetStatus = $this->getSnippetStatus($params);
 
         if ((int) ($plugin->enabled ?? 0) !== 1) {
             $issues[] = [
@@ -252,6 +252,7 @@ final class MaxcacheState
             BypassCookieNames::class => 'BypassCookieNames.php',
             HtaccessManager::class => 'HtaccessManager.php',
             SnippetBuilder::class => 'SnippetBuilder.php',
+            SnippetParams::class => 'SnippetParams.php',
             SystemCacheSettings::class => 'SystemCacheSettings.php',
             ResponseSafety::class => 'ResponseSafety.php',
         ];
@@ -271,28 +272,11 @@ final class MaxcacheState
         }
     }
 
-    private function getSnippetStatus(array $params, array $customExclusions): array
+    private function getSnippetStatus(array $params): array
     {
         try {
             $this->loadSystemSupport();
-            $config = Factory::getConfig();
-            $effectiveExclusions = SystemCacheSettings::mergeUrlPatterns(
-                BuiltInExclusions::filterCustomPatterns($customExclusions)
-            );
-            $snippet = SnippetBuilder::build(
-                (string) ($params['server_snippet_mode'] ?? 'mod_maxcache'),
-                [
-                    'cache_root' => (string) ($params['cache_root'] ?? (JPATH_ROOT . '/maxcache')),
-                    'site_hosts' => (string) ($params['site_hosts'] ?? ''),
-                    'exclude' => implode("\n", $effectiveExclusions),
-                    'bypass_cookies' => (string) ($params['bypass_cookies'] ?? ''),
-                    'joomla_secret' => (string) $config->get('secret', ''),
-                    'joomla_session_name' => (string) $config->get('session_name', ''),
-                    'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
-                    'allowed_query_params' => (string) ($params['allowed_query_params'] ?? ''),
-                    'write_gzip' => (int) ($params['write_gzip'] ?? 0),
-                ]
-            );
+            $snippet = SnippetParams::buildSnippet($params);
 
             return HtaccessManager::getStatus($snippet);
         } catch (\Throwable $exception) {

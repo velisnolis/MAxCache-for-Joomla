@@ -133,6 +133,14 @@ route_verdict() {
   local reason="$4"
   local files="$5"
   local token_changed="$6"
+  local token1="$7"
+  local token2="$8"
+
+  if { [[ -n "$token1" ]] && [[ -z "$token2" ]]; } \
+    || { [[ -z "$token1" ]] && [[ -n "$token2" ]]; }; then
+    echo "csrf-token-missing"
+    return
+  fi
 
   if [[ "$token_changed" == "no" ]]; then
     echo "csrf-token-stale"
@@ -155,6 +163,13 @@ route_verdict() {
     else
       echo "live-route-missing"
     fi
+    return
+  fi
+
+  # After the purge, the probe itself can make the writer store a fresh artifact.
+  # A stored response proves Joomla rendered the route live, not a stale file.
+  if [[ "$phase" == "post" && "$state" == "stored" && "$status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "live-ok"
     return
   fi
 
@@ -238,11 +253,13 @@ report_phase() {
     token2="$(printf '%s' "$body2" | token_hash || true)"
     changed=''
 
-    if [[ -n "$token1" || -n "$token2" ]]; then
+    if [[ -n "$token1" && -n "$token2" ]]; then
       [[ "$token1" != "$token2" ]] && changed='yes' || changed='no'
+    elif [[ -n "$token1" || -n "$token2" ]]; then
+      changed='incomplete'
     fi
 
-    verdict="$(route_verdict "$phase" "$status" "$state" "$reason" "$files" "$changed")"
+    verdict="$(route_verdict "$phase" "$status" "$state" "$reason" "$files" "$changed" "$token1" "$token2")"
 
     if ! is_safe_verdict "$verdict"; then
       phase_risk_count=$((phase_risk_count + 1))

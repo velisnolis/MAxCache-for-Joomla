@@ -90,7 +90,7 @@ final class CacheOperations
                     continue;
                 }
 
-                if (!ResponseSafety::containsJoomlaFormToken($body)) {
+                if (!ResponseSafety::containsJoomlaFormToken($body) && !ResponseSafety::containsScriptOptionToken($body)) {
                     continue;
                 }
 

@@ -1,0 +1,46 @@
+PASS off      page     FALLBACK  ?                                                         200 text/html; charset=utf-8
+PASS strict   page     CACHED    ?                                                         200 text/html; charset=utf-8
+PASS strict   page     FALLBACK  ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?                                                         200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?utm_source=a&utm_medium=b&utm_campaign=c                        200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?fbclid=abc&utm_source=x                                  200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?gclid=abc                                                200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?utm_source=x&start=10                                    200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?start=10&utm_source=x                                    200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?start=10                                                 200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?p=customizer&utm_source=x                                200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?utm_source=x                      cookie:joomla_user_state 200 text/html; charset=utf-8
+PASS tracking page     CACHED    ?utm_source                                               200 text/html; charset=utf-8
+PASS tracking page     FALLBACK  ?UTM_SOURCE=x                                             200 text/html; charset=utf-8
+PASS off      ca/page  FALLBACK  ?                                                         200 text/html; charset=utf-8
+PASS strict   ca/page  CACHED    ?                                                         200 text/html; charset=utf-8
+PASS strict   ca/page  FALLBACK  ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?                                                         200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?utm_source=a&utm_medium=b&utm_campaign=c                        200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?fbclid=abc&utm_source=x                                  200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?gclid=abc                                                200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?utm_source=x&start=10                                    200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?start=10&utm_source=x                                    200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?start=10                                                 200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?p=customizer&utm_source=x                                200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?utm_source=x                      cookie:joomla_user_state 200 text/html; charset=utf-8
+PASS tracking ca/page  CACHED    ?utm_source                                               200 text/html; charset=utf-8
+PASS tracking ca/page  FALLBACK  ?UTM_SOURCE=x                                             200 text/html; charset=utf-8
+PASS off      es/page  FALLBACK  ?                                                         200 text/html; charset=utf-8
+PASS strict   es/page  CACHED    ?                                                         200 text/html; charset=utf-8
+PASS strict   es/page  FALLBACK  ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?                                                         200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?utm_source=newsletter                                    200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?utm_source=a&utm_medium=b&utm_campaign=c                        200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?fbclid=abc&utm_source=x                                  200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?gclid=abc                                                200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?utm_source=x&start=10                                    200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?start=10&utm_source=x                                    200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?start=10                                                 200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?p=customizer&utm_source=x                                200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?utm_source=x                      cookie:joomla_user_state 200 text/html; charset=utf-8
+PASS tracking es/page  CACHED    ?utm_source                                               200 text/html; charset=utf-8
+PASS tracking es/page  FALLBACK  ?UTM_SOURCE=x                                             200 text/html; charset=utf-8
+pass=45 fail=0

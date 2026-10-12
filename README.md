@@ -30,6 +30,27 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.40
+
+- Public cache directories are created with `0755`, including under a restrictive
+  PHP umask, so Apache can read artifacts when it runs as a different Unix user.
+- Shared artifacts no longer retain a visitor's `csrf.token`. The browser obtains
+  its own token on demand; pages are not stored when the refresh loader is unavailable.
+- Admin actions enforce Joomla ACLs as well as CSRF validation. The final response
+  is checked before sending; private responses, errors and hidden-token forms
+  remove matching older plain/gzip artifacts.
+- Session-cookie exclusions, anchored URL patterns, gzip MIME declarations and
+  snippet hashes are consistent across the administrator, frontend and CLI.
+- Optional tracking query parameters serve the canonical cached page. All queries
+  continue to bypass static writes, preserving the canonical artifact.
+- Route reports identify incomplete token probes and correctly accept routes
+  rendered and stored live after a purge.
+
+After updating, review existing cache directory permissions, review/reapply the
+server snippet, and purge/regenerate old artifacts with a verified backup and
+pre/post route checks. Installing the package alone does not repair previously
+stored pages or existing directory permissions.
+
 ## New in 0.1.39
 
 - Joomla 6 filesystem compatibility:
@@ -206,6 +227,64 @@ php tests/run.php
 tests/route-report.sh
 ```
 
+`tests/run.php` includes the runtime event regressions in `tests/runtime.php`.
+They use Joomla API doubles and an isolated temporary filesystem, not a live
+Joomla installation. They verify denied/authorized admin actions, transmitted
+safety headers, plain/gzip artifacts, and query requests preserving canonical HTML.
+When Node is available it also runs `tests/csrf-refresh.test.js`, which tests the
+browser token refresh script against doubles for `core.js` and `fetch`.
+
+## Runtime Safeguards in 0.1.40
+
+Administrative web actions require a logged-in identity with backend access.
+Purging also requires `core.manage` on `com_cache`; applying server rules or
+changing Cache Cleaner integration requires global `core.admin`. A valid CSRF
+token remains mandatory and never substitutes for authorization. The admin purge
+button is hidden from users without purge permission.
+
+Before sending the response, MAxCache rejects explicit `Cache-Control: private`
+or `no-store`, Joomla form tokens, and a response that is no longer a guest HTML
+200. Rejected responses send `private, no-store` and remove matching plain/gzip
+artifacts, including an old gzip companion when gzip writing is disabled.
+Public HTML remains cacheable independently of Joomla's generic browser-cache
+headers, which Joomla adds later inside `respond()`.
+
+Query-string caching is temporarily disabled, including previously allowlisted
+parameters: the writer does not yet implement query-specific cache keys. The
+saved `allowed_query_params` field is retained for compatibility but has no effect;
+generated snippets no longer emit `MaxCacheQSAllowedParams` for that field. This preserves the
+canonical URL's HTML instead of replacing it with search or pagination results.
+
+`tracking_query_params` is an optional, empty-by-default list of parameters that
+never change server-rendered HTML, such as `utm_source`, `gclid` or `fbclid`. When a
+request's query contains only these names, the server rules serve the canonical
+cached page; PHP still never writes from such a request. In Apache mode, any other
+key falls through to Joomla. In `mod_maxcache` mode the snippet lists the names in
+both `MaxCacheQSAllowedParams` and `MaxCacheQSIgnoredParams`, relying on CloudLinux's
+documented behaviour: a tracking-only query yields an empty `{QS_SUFFIX}`, and other
+keys keep a `#query` suffix the writer never creates. This was verified on 2026-10-12
+with synthetic canaries on a single-language and a multilingual site (CloudLinux
+`mod_maxcache`); see `docs/validation-2026-10-12.md`. Names are case-sensitive.
+Leave the list empty when a page reads these parameters in PHP, for example a form
+field prefilled from `utm_source`. The names `p` and `maxcache_probe` are ignored.
+
+Stored artifacts no longer keep the `csrf.token` script option of the request
+that generated them. The browser fetches the visitor's own token only when a
+non-GET `Joomla.request()` needs it; see `docs/dynamic-fragments.md`.
+`maxcache:diagnose` reports older artifacts that still contain one.
+Pages with a script option token are not stored unless the refresh loader can
+be inserted; otherwise MAxCache reports `csrf-refresh-unavailable` and removes
+older artifacts for that route.
+
+New public cache directories use `0755`, including under a restrictive PHP
+umask, so Apache can traverse them when it runs as a different Unix user from
+PHP. Private backup directories retain the separate `0750` default. Existing
+cache directory permissions require a scoped operational repair.
+
+When deploying 0.1.40, review/apply the updated server snippet and perform an
+approved, backed-up purge with pre/post route checks. Old artifacts served before PHP runs are not repaired
+by installing a write guard alone.
+
 ## Joomla Console Commands
 
 The package enables its companion console plugin during install/update. Run the
@@ -239,7 +318,8 @@ For CSRF-sensitive forms, include the reset/remind/login routes in `routes.txt`.
 The report extracts Joomla-style hidden token names twice with cache-busting query
 parameters and flags whether the token changes. The final `verdict` column gives
 a per-phase hint such as `cache-present-verify-post-purge`, `live-route-missing-after-purge`,
-or `csrf-token-stale`.
+`csrf-token-stale`, or `csrf-token-missing`. A fresh-token verdict requires both
+independent probes to return a token and for those tokens to differ.
 
 Use `--fail-on-risk` in migration automation. It exits non-zero unless every route
 in the final phase is `live-ok`, `excluded-ok`, or `csrf-token-fresh`. Redirects

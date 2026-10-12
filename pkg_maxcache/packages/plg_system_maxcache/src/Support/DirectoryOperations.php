@@ -16,6 +16,19 @@ final class DirectoryOperations
         return is_dir($path) || (@mkdir($path, $permissions, true) && is_dir($path));
     }
 
+    public static function ensurePublicCache(string $path): bool
+    {
+        // Apache may read as a different user from PHP. A restrictive PHP umask
+        // must not remove traversal permissions from new public cache paths.
+        $originalUmask = umask(0);
+
+        try {
+            return self::ensure($path, 0755);
+        } finally {
+            umask($originalUmask);
+        }
+    }
+
     /**
      * @return list<string>
      */

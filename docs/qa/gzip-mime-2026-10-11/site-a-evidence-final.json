@@ -1,0 +1,557 @@
+{
+    "verified_at_utc": "2026-10-11T12:14:01+00:00",
+    "host": "site-a.example",
+    "canary_uri": "/maxcache-canary-20261011-gzip-final-26fe5c",
+    "scope": "static synthetic reader only; no Joomla installation or DB writes",
+    "checks": [
+        {
+            "name": "module-off-live-baseline",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "module-on-https-static-positive-control",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "34841225af4f134fe3fe79dc4fc9b5b437c776b83c5bfe7777feae6882d5c83b",
+                "bytes": 53
+            }
+        },
+        {
+            "name": "query-bypass:?utm_source=synthetic",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?limitstart=10",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?unknown=1",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?filter%5B%5D=1",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?utm_source=synthetic&unknown=1",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?option=com_users",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?format=json",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "query-bypass:?tmpl=component",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:0",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:1",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:2",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:3",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:4",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:5",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:6",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "configured-or-joomla-cookie-bypass:7",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "unrelated-cookie-still-cache-hit",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "34841225af4f134fe3fe79dc4fc9b5b437c776b83c5bfe7777feae6882d5c83b",
+                "bytes": 53
+            }
+        },
+        {
+            "name": "post-not-served-from-maxcache",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:custom-excluded.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:component/users/reset.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:component/users/remind.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:administrator/probe.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:api/probe.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "excluded-route:component/ajax/probe.html",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "gzip-request-write-gzip-off-plain-cache-hit",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "34841225af4f134fe3fe79dc4fc9b5b437c776b83c5bfe7777feae6882d5c83b",
+                "bytes": 53
+            }
+        },
+        {
+            "name": "gzip-request-write-gzip-on-cache-hit",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": true,
+                "content_encoding": "gzip",
+                "content_type": "text/html",
+                "body_sha256": "aea091fcd5e93c80a85ac73986af72223ede694facb6c69b0e422db24cb15618",
+                "bytes": 58
+            }
+        },
+        {
+            "name": "gzip-cache-response-declares-html-mime-type",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": true,
+                "content_encoding": "gzip",
+                "content_type": "text/html",
+                "body_sha256": "aea091fcd5e93c80a85ac73986af72223ede694facb6c69b0e422db24cb15618",
+                "bytes": 58
+            }
+        },
+        {
+            "name": "gzip-enabled-client-without-accept-encoding-gets-plain-cache",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "34841225af4f134fe3fe79dc4fc9b5b437c776b83c5bfe7777feae6882d5c83b",
+                "bytes": 53
+            }
+        },
+        {
+            "name": "plain-cache-does-not-inherit-gzip-encoding",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": false,
+                "cached_https": true,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "34841225af4f134fe3fe79dc4fc9b5b437c776b83c5bfe7777feae6882d5c83b",
+                "bytes": 53
+            }
+        },
+        {
+            "name": "gzip-query-still-bypasses",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "gzip-joomla-cookie-still-bypasses",
+            "pass": true,
+            "result": {
+                "status": 200,
+                "tls_verify_result": 0,
+                "live": true,
+                "cached_https": false,
+                "cached_http": false,
+                "cached_gzip": false,
+                "content_encoding": "",
+                "content_type": "text/html",
+                "body_sha256": "82ef18aa100364d8b3d2e97fb288ba7658a47b7f85a51ba5778e0eb5f5558028",
+                "bytes": 45
+            }
+        },
+        {
+            "name": "all-synthetic-artifacts-unchanged",
+            "pass": true,
+            "result": {
+                "unchanged": true
+            }
+        }
+    ],
+    "failures": 0,
+    "snippet_sha256": "b4b5ce1d57b0029fb867138b011f641b1af819e0c506b801ad854d8f616aa18c",
+    "candidate_snippet_builder_sha256": "7a2db30049aa7fa9e251d88d2750023c45f655203d4ad886a3bc2bb3ed99f6d3",
+    "candidate_support_sha256": {
+        "CachePathHelper": "d5e80840bc8438353afeba7bda20f94e6c379df6a1597275a1e6ceef137cf284",
+        "BypassCookieNames": "31903cccf75e8c914151e636245444e02e8117520a996c40b81a73878b328f32",
+        "BuiltInExclusions": "fb99097bc9301a121f24c3ebe2314d2d9d1859ac0126be476b7a5af47913a562",
+        "RegexPatternMatcher": "95eaaadb294199e315d3ba95f6fa3d5e79204125c523500553795c233fe57291",
+        "SnippetBuilder": "7a2db30049aa7fa9e251d88d2750023c45f655203d4ad886a3bc2bb3ed99f6d3"
+    },
+    "backup_archive_sha256": "3a4af095d3e07c33b655a7436da6a69785e1b52a8f52abf983164375742a16f7",
+    "retired_outside_web_root": true,
+    "canary_absent_from_web_root": true,
+    "existing_site_files_unchanged": true
+}

@@ -35,6 +35,16 @@ if [[ "$headers" == "1" ]]; then
     /missing)
       printf 'HTTP/1.1 404 Not Found\r\n\r\n'
       ;;
+    /rewritten)
+      # After the purge Joomla renders the route and the writer stores it again.
+      if [[ -f "$MOCK_PHASE_FILE" ]]; then
+        mkdir -p "$MOCK_CACHE_DIR/example.test/rewritten"
+        printf '<html>fresh</html>' > "$MOCK_CACHE_DIR/example.test/rewritten/index-https.html"
+        printf 'HTTP/1.1 200 OK\r\nX-MAxCache-State: stored\r\n\r\n'
+      else
+        printf 'HTTP/1.1 200 OK\r\n\r\n'
+      fi
+      ;;
     /post-missing)
       if [[ -f "$MOCK_PHASE_FILE" ]]; then
         printf 'HTTP/1.1 404 Not Found\r\n\r\n'
@@ -67,6 +77,21 @@ case "$route" in
   /stale)
     printf '<input type="hidden" name="cccccccccccccccccccccccccccccccc" value="1">'
     ;;
+  /missing-first-token|/missing-second-token)
+    counter_suffix="${route#/}"
+    counter_file="${MOCK_COUNTER}-${counter_suffix}"
+    count=0
+    [[ -f "$counter_file" ]] && count="$(<"$counter_file")"
+    count=$((count + 1))
+    printf '%s' "$count" > "$counter_file"
+
+    if [[ "$route" == "/missing-first-token" && "$count" == "2" ]] \
+      || [[ "$route" == "/missing-second-token" && "$count" == "1" ]]; then
+      printf '<input type="hidden" name="dddddddddddddddddddddddddddddddd" value="1">'
+    else
+      printf '<html>form token missing</html>'
+    fi
+    ;;
   *)
     printf '<html>fixture</html>'
     ;;
@@ -76,8 +101,10 @@ MOCK
 chmod +x "$tmp_dir/bin/curl"
 printf '%s\n' '/excluded' '/token' > "$tmp_dir/safe-routes.txt"
 printf '%s\n' '/missing' '/stale' '/redirect' > "$tmp_dir/risky-routes.txt"
+printf '%s\n' '/missing-first-token' '/missing-second-token' > "$tmp_dir/missing-token-routes.txt"
 printf '%s\n' '/cached' > "$tmp_dir/cached-route.txt"
 printf '%s\n' '/post-missing' > "$tmp_dir/post-missing-route.txt"
+printf '%s\n' '/rewritten' > "$tmp_dir/rewritten-route.txt"
 
 mkdir -p "$tmp_dir/cache/example.test/cached"
 printf '<html>cached</html>' > "$tmp_dir/cache/example.test/cached/index-https.html"
@@ -85,7 +112,7 @@ printf '<html>cached</html>' > "$tmp_dir/cache/example.test/cached/index-https.h
 cat > "$tmp_dir/purge-fixture.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-rm -rf "$tmp_dir/cache/example.test/cached"
+rm -rf "$tmp_dir/cache/example.test/cached" "$tmp_dir/cache/example.test/rewritten"
 touch "$tmp_dir/post-phase"
 EOF
 chmod +x "$tmp_dir/purge-fixture.sh"
@@ -103,6 +130,38 @@ safe_output="$(
 
 grep -q 'excluded-ok' <<<"$safe_output"
 grep -q 'csrf-token-fresh' <<<"$safe_output"
+
+set +e
+missing_token_output="$(
+  PATH="$tmp_dir/bin:$PATH" \
+  MOCK_COUNTER="$tmp_dir/token-counter" \
+  MOCK_PHASE_FILE="$tmp_dir/post-phase" \
+  "$root_dir/scripts/maxcache-route-report.sh" \
+    --base-url https://example.test \
+    --routes "$tmp_dir/missing-token-routes.txt" \
+    --cache-root "$tmp_dir/cache" \
+    --fail-on-risk 2>&1
+)"
+missing_token_exit=$?
+set -e
+
+if [[ "$missing_token_exit" != "1" ]]; then
+  echo "Expected a missing token probe to exit 1, got $missing_token_exit" >&2
+  echo "$missing_token_output" >&2
+  exit 1
+fi
+
+if grep -q 'csrf-token-fresh' <<<"$missing_token_output"; then
+  echo "A route with one missing token probe must not be reported as csrf-token-fresh" >&2
+  echo "$missing_token_output" >&2
+  exit 1
+fi
+
+if [[ "$(grep -c 'csrf-token-missing' <<<"$missing_token_output")" != "2" ]]; then
+  echo "Expected both incomplete token probes to report csrf-token-missing" >&2
+  echo "$missing_token_output" >&2
+  exit 1
+fi
 
 set +e
 risky_output="$(
@@ -169,5 +228,25 @@ if [[ "$post_missing_exit" != "1" ]]; then
 fi
 
 grep -q 'live-route-missing-after-purge' <<<"$post_missing_output"
+
+rm -f "$tmp_dir/post-phase"
+mkdir -p "$tmp_dir/cache/example.test/rewritten"
+printf '<html>old</html>' > "$tmp_dir/cache/example.test/rewritten/index-https.html"
+
+rewritten_output="$(
+  PATH="$tmp_dir/bin:$PATH" \
+  MOCK_COUNTER="$tmp_dir/token-counter" \
+  MOCK_PHASE_FILE="$tmp_dir/post-phase" \
+  MOCK_CACHE_DIR="$tmp_dir/cache" \
+  "$root_dir/scripts/maxcache-route-report.sh" \
+    --base-url https://example.test \
+    --routes "$tmp_dir/rewritten-route.txt" \
+    --cache-root "$tmp_dir/cache" \
+    --purge-cmd "$tmp_dir/purge-fixture.sh" \
+    --fail-on-risk 2>&1
+)" || { echo "A route stored live after the purge must not fail --fail-on-risk" >&2; echo "$rewritten_output" >&2; exit 1; }
+
+grep -q 'pre,/rewritten,200.*cache-present-verify-post-purge' <<<"$rewritten_output"
+grep -q 'post,/rewritten,200.*live-ok' <<<"$rewritten_output"
 
 echo "Route report tests passed."

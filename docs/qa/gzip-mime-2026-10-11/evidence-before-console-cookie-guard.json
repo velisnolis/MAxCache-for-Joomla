@@ -1,0 +1,595 @@
+{
+    "environment": {
+        "joomla": "6.1.4",
+        "php": "8.4.26",
+        "site": "MAxCache Joomla 6 isolated lab",
+        "plugin_version": "0.1.39-unreleased",
+        "fixture_only": true
+    },
+    "verified_at_utc": "2026-10-11T12:13:00+00:00",
+    "installed_source_sha256": {
+        "Extension/Maxcache.php": "73d2804c6f355155b19934e9631c4ce0b4c08080d1724cab3a4eedcb7c783d0d",
+        "Support/BypassCookieNames.php": "7860c43016fa37f6726248043486597f8e24599471f43be74ea12f039682d5b2",
+        "Support/SnippetBuilder.php": "7a2db30049aa7fa9e251d88d2750023c45f655203d4ad886a3bc2bb3ed99f6d3",
+        "Support/ResponseSafety.php": "68bea8e698a15b681810a649039a344393f32a24a03594c0d54889561bbcdc39"
+    },
+    "checks": [
+        {
+            "test": "Plugin-manager real ACL is restricted",
+            "passed": true
+        },
+        {
+            "test": "Cache-manager real ACL is restricted",
+            "passed": true
+        },
+        {
+            "test": "Cache privilege does not grant backend login",
+            "passed": true
+        },
+        {
+            "test": "End-anchored configured exclusion bypasses the writer before applying Apache rules",
+            "passed": true,
+            "status": 200,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Public HTML is stored before real HTTP send",
+            "passed": true,
+            "status": 200,
+            "state": "stored",
+            "reason": ""
+        },
+        {
+            "test": "Plain artifact equals the HTTP body",
+            "passed": true
+        },
+        {
+            "test": "Gzip artifact equals the HTTP body",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: limitstart=10",
+            "passed": true,
+            "status": 404,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: limitstart=10",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: start=20",
+            "passed": true,
+            "status": 404,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: start=20",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: utm_source=lab",
+            "passed": true,
+            "status": 200,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: utm_source=lab",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: limitstart%5B%5D=10",
+            "passed": true,
+            "status": 404,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: limitstart%5B%5D=10",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: limitstart=10&unknown=1",
+            "passed": true,
+            "status": 404,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: limitstart=10&unknown=1",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: unknown=1",
+            "passed": true,
+            "status": 200,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: unknown=1",
+            "passed": true
+        },
+        {
+            "test": "Query bypass via real HTTP: =value",
+            "passed": true,
+            "status": 200,
+            "reason": "query-params"
+        },
+        {
+            "test": "Query cannot change canonical plain/gzip: =value",
+            "passed": true
+        },
+        {
+            "test": "A query-only visit bypasses the writer",
+            "passed": true
+        },
+        {
+            "test": "A query-only visit creates no canonical artifact",
+            "passed": true
+        },
+        {
+            "test": "A real guest session cookie bypasses the writer",
+            "passed": true
+        },
+        {
+            "test": "A session visit does not change cached HTML",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: private",
+            "passed": true,
+            "status": 200,
+            "reason": "private-response"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: private",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: private",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: no-store",
+            "passed": true,
+            "status": 200,
+            "reason": "private-response"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: no-store",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: no-store",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: csrf",
+            "passed": true,
+            "status": 200,
+            "reason": "csrf-token-in-response"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: csrf",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: csrf",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: message",
+            "passed": true,
+            "status": 200,
+            "reason": "response-state"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: message",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: message",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: redirect",
+            "passed": true,
+            "status": 200,
+            "reason": "response-state"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: redirect",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: redirect",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: json",
+            "passed": true,
+            "status": 200,
+            "reason": "response-state"
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: json",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: json",
+            "passed": true
+        },
+        {
+            "test": "Unsafe response bypass via real HTTP: status-500",
+            "passed": true,
+            "status": 500,
+            "reason": "response-state"
+        },
+        {
+            "test": "A real PSR response 500 is not treated as HTTP success",
+            "passed": true
+        },
+        {
+            "test": "Unsafe policy reaches HTTP client: status-500",
+            "passed": true,
+            "cache_control": "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+        },
+        {
+            "test": "Unsafe response removes stale plain/gzip: status-500",
+            "passed": true
+        },
+        {
+            "test": "CSRF tokens differ between two fresh guest visits",
+            "passed": true
+        },
+        {
+            "test": "Repeated CSRF responses produce no artifacts",
+            "passed": true
+        },
+        {
+            "test": "CSRF rejection removes old gzip even when gzip writes are disabled",
+            "passed": true
+        },
+        {
+            "test": "Guest denied admin action: purge_cache",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "Guest denial has no effects: purge_cache",
+            "passed": true
+        },
+        {
+            "test": "Guest denied admin action: apply_snippet",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "Guest denial has no effects: apply_snippet",
+            "passed": true
+        },
+        {
+            "test": "Guest denied admin action: enable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "Guest denial has no effects: enable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "Guest denied admin action: disable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "Guest denial has no effects: disable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "Real administrator login: maxcache-plugin-manager",
+            "passed": true,
+            "login_status": 303,
+            "page_status": 200,
+            "title": "Home Dashboard - MAxCache Joomla 6 isolated lab - Administration"
+        },
+        {
+            "test": "plugin-manager denied admin action with valid CSRF: purge_cache",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "plugin-manager denial has no effects: purge_cache",
+            "passed": true
+        },
+        {
+            "test": "plugin-manager denied admin action with valid CSRF: apply_snippet",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "plugin-manager denial has no effects: apply_snippet",
+            "passed": true
+        },
+        {
+            "test": "plugin-manager denied admin action with valid CSRF: enable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "plugin-manager denial has no effects: enable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "plugin-manager denied admin action with valid CSRF: disable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "plugin-manager denial has no effects: disable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "Real administrator login: maxcache-cache-manager",
+            "passed": true,
+            "login_status": 303,
+            "page_status": 200,
+            "title": "Home Dashboard - MAxCache Joomla 6 isolated lab - Administration"
+        },
+        {
+            "test": "cache-manager denied admin action with valid CSRF: apply_snippet",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "cache-manager denial has no effects: apply_snippet",
+            "passed": true
+        },
+        {
+            "test": "cache-manager denied admin action with valid CSRF: enable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "cache-manager denial has no effects: enable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "cache-manager denied admin action with valid CSRF: disable_regularlabs",
+            "passed": true,
+            "status": 403
+        },
+        {
+            "test": "cache-manager denial has no effects: disable_regularlabs",
+            "passed": true
+        },
+        {
+            "test": "Authorized role still needs a valid CSRF token",
+            "passed": true
+        },
+        {
+            "test": "Cache-manager can purge only dedicated test cache",
+            "passed": true,
+            "status": 303
+        },
+        {
+            "test": "Real administrator login: labadmin",
+            "passed": true,
+            "login_status": 303,
+            "page_status": 200,
+            "title": "Home Dashboard - MAxCache Joomla 6 isolated lab - Administration"
+        },
+        {
+            "test": "Super User applies snippet in isolated site",
+            "passed": true,
+            "status": 303
+        },
+        {
+            "test": "Applied snippet does not enable query allowlists",
+            "passed": true
+        },
+        {
+            "test": "Installed Apache snippet really serves the seeded static variant",
+            "passed": true
+        },
+        {
+            "test": "Apache query bypass reaches live Joomla rather than stale static HTML",
+            "passed": true
+        },
+        {
+            "test": "Apache query bypass neither replaces nor creates canonical artifacts",
+            "passed": true
+        },
+        {
+            "test": "Apache bypasses static HTML for a real guest session cookie",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "state": "bypass",
+            "reason": "bypass-cookie"
+        },
+        {
+            "test": "Apache session bypass preserves the static artifact and does not write HTML",
+            "passed": true
+        },
+        {
+            "test": "Apache excluded route reaches live Joomla: /index.php/lab-excluded",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Excluded visits preserve the old fixture and write no new HTML: /index.php/lab-excluded",
+            "passed": true
+        },
+        {
+            "test": "Apache excluded route reaches live Joomla: /index.php/lab-quoted",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Excluded visits preserve the old fixture and write no new HTML: /index.php/lab-quoted",
+            "passed": true
+        },
+        {
+            "test": "Apache excluded route reaches live Joomla: /index.php/lab-regex",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Excluded visits preserve the old fixture and write no new HTML: /index.php/lab-regex",
+            "passed": true
+        },
+        {
+            "test": "Apache excluded route reaches live Joomla: /index.php/component/users/reset",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Excluded visits preserve the old fixture and write no new HTML: /index.php/component/users/reset",
+            "passed": true
+        },
+        {
+            "test": "Real Joomla form tokens change despite a stale static artifact: /index.php/component/users/reset",
+            "passed": true
+        },
+        {
+            "test": "Apache excluded route reaches live Joomla: /index.php/component/users/remind",
+            "passed": true,
+            "status": 200,
+            "served_static_sentinel": false,
+            "reason": "excluded-url"
+        },
+        {
+            "test": "Excluded visits preserve the old fixture and write no new HTML: /index.php/component/users/remind",
+            "passed": true
+        },
+        {
+            "test": "Real Joomla form tokens change despite a stale static artifact: /index.php/component/users/remind",
+            "passed": true
+        },
+        {
+            "test": "Real administrator login: labadmin",
+            "passed": true,
+            "login_status": 303,
+            "page_status": 200,
+            "title": "Home Dashboard - MAxCache Joomla 6 isolated lab - Administration"
+        },
+        {
+            "test": "Ambiguous quote delimiters produce an explicit fail-closed Apache snippet",
+            "passed": true
+        },
+        {
+            "test": "Fail-closed snippet keeps real Joomla working instead of serving stale HTML or returning 500",
+            "passed": true
+        },
+        {
+            "test": "Both-quote exclusion still bypasses static reads and the writer",
+            "passed": true
+        },
+        {
+            "test": "Safe exclusions restore static serving without a site restart",
+            "passed": true
+        },
+        {
+            "test": "Real administrator login: labadmin",
+            "passed": true,
+            "login_status": 303,
+            "page_status": 200,
+            "title": "Home Dashboard - MAxCache Joomla 6 isolated lab - Administration"
+        },
+        {
+            "test": "Real admin applies configured mod_maxcache gzip suffix: 1",
+            "passed": true
+        },
+        {
+            "test": "Real admin applies configured gzip MIME directives: 1",
+            "passed": true
+        },
+        {
+            "test": "Real admin status agrees with applied gzip snippet: 1",
+            "passed": true
+        },
+        {
+            "test": "Real console and admin agree on gzip snippet hash: 1",
+            "passed": false
+        },
+        {
+            "test": "Real admin detects changed gzip settings before reapply: 1",
+            "passed": true
+        },
+        {
+            "test": "Real console detects changed gzip settings before reapply: 1",
+            "passed": true
+        },
+        {
+            "test": "Real admin applies configured mod_maxcache gzip suffix: 0",
+            "passed": true
+        },
+        {
+            "test": "Real admin applies configured gzip MIME directives: 0",
+            "passed": true
+        },
+        {
+            "test": "Real admin status agrees with applied gzip snippet: 0",
+            "passed": true
+        },
+        {
+            "test": "Real console and admin agree on gzip snippet hash: 0",
+            "passed": false
+        },
+        {
+            "test": "Real admin detects changed gzip settings before reapply: 0",
+            "passed": true
+        },
+        {
+            "test": "Real console detects changed gzip settings before reapply: 0",
+            "passed": true
+        },
+        {
+            "test": "Applied snippet exposes a reusable guarded MIME block",
+            "passed": true
+        },
+        {
+            "test": "Real writer generates gzip before Apache MIME validation",
+            "passed": true
+        },
+        {
+            "test": "Generated MIME directives send gzip encoding through real Apache",
+            "passed": true
+        },
+        {
+            "test": "Generated MIME directives send HTML content type through real Apache",
+            "passed": true
+        },
+        {
+            "test": "Real Apache serves the actual writer gzip bytes",
+            "passed": true
+        },
+        {
+            "test": "Gzip MIME declarations leave plain HTML unencoded",
+            "passed": true
+        },
+        {
+            "test": "Real console agrees after restoring the Apache snippet",
+            "passed": false
+        }
+    ],
+    "failed": [
+        "Real console and admin agree on gzip snippet hash: 1",
+        "Real console and admin agree on gzip snippet hash: 0",
+        "Real console agrees after restoring the Apache snippet"
+    ],
+    "assertions": 121
+}

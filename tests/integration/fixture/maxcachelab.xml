@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="system" method="upgrade">
+  <name>MAxCache isolated integration fixture</name>
+  <version>1.0.0</version>
+  <namespace path="src">MaxcacheTest\Plugin\System\Lab</namespace>
+  <files><folder plugin="maxcachelab">services</folder><folder>src</folder></files>
+</extension>

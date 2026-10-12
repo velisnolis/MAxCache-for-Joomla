@@ -8,8 +8,8 @@
 namespace Vendor\Plugin\System\Maxcache\Extension;
 
 use Joomla\CMS\Event\Application\AfterRenderEvent;
-use Joomla\CMS\Event\Application\AfterRespondEvent;
 use Joomla\CMS\Event\Application\AfterRouteEvent;
+use Joomla\CMS\Event\Application\BeforeRespondEvent;
 use Joomla\CMS\Event\Model\AfterSaveEvent;
 use Joomla\CMS\Event\PageCache\GetKeyEvent;
 use Joomla\CMS\Event\PageCache\IsExcludedEvent;
@@ -26,6 +26,7 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
 use Joomla\Event\Event;
+use Joomla\Event\Priority;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Registry\Registry;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
@@ -42,7 +43,7 @@ use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
-use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
+use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
 
@@ -73,7 +74,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         return [
             'onAfterRoute' => 'onAfterRoute',
             'onAfterRender' => 'onAfterRender',
-            'onAfterRespond' => 'onAfterRespond',
+            // Run after other onBeforeRespond listeners, so the stored artifact and
+            // the privacy check see the final body and headers.
+            'onBeforeRespond' => ['onBeforeRespond', Priority::MIN],
             'onContentAfterSave' => 'onContentAfterSave',
             'onContentChangeState' => 'onContentChangeState',
             'onContentAfterDelete' => 'onContentAfterDelete',
@@ -129,7 +132,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        if (!$this->hasAllowedQueryParameters()) {
+        if (!$this->hasNoQueryString()) {
             $this->markRejected('query-params');
             return;
         }
@@ -161,43 +164,59 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $this->getApplication()->set('gzip', false);
     }
 
-    public function onAfterRespond(AfterRespondEvent $event): void
+    public function onBeforeRespond(BeforeRespondEvent $event): void
     {
-        if (!$this->eligible || !$this->responseSupportsStaticWrite()) {
+        if (!$this->eligible) {
             return;
         }
 
-        $body = (string) $this->getApplication()->getBody();
+        $app = $this->getApplication();
+
+        // Inspect explicit response policy before Joomla adds its generic browser
+        // cache headers inside respond(). Never turn a private response into a
+        // public static artifact, and send safety/debug headers before the body.
+        if (ResponseSafety::hasPrivateCacheControl($app->getHeaders())) {
+            $this->rejectResponse('private-response');
+            return;
+        }
+
+        if (!$this->appStateSupportsCaching() || !$this->responseSupportsStaticWrite()) {
+            $this->rejectResponse('response-state');
+            return;
+        }
+
+        $body = (string) $app->getBody();
 
         if ($body === '') {
             return;
         }
 
         if (ResponseSafety::containsJoomlaFormToken($body)) {
-            $this->removeCurrentArtifacts();
-            $this->getApplication()->setHeader(
-                'Cache-Control',
-                'private, no-store, no-cache, must-revalidate',
-                true
-            );
-            $this->markRejected('csrf-token-in-response');
+            $this->rejectResponse('csrf-token-in-response');
             return;
         }
 
         $directory = \dirname($this->targetPath);
 
-        if (!DirectoryOperations::ensure($directory)) {
+        if (!DirectoryOperations::ensurePublicCache($directory)) {
             $this->emitDebugHeaders('mkdir-failed');
             return;
         }
 
-        if (!AtomicFileWriter::write($this->targetPath, $body)) {
+        $artifact = $this->buildArtifactBody($body);
+
+        if ($artifact === null) {
+            $this->rejectResponse('csrf-refresh-unavailable');
+            return;
+        }
+
+        if (!AtomicFileWriter::write($this->targetPath, $artifact)) {
             $this->emitDebugHeaders('write-failed');
             return;
         }
 
         if ($this->gzipPath !== null) {
-            $gzip = gzencode($body, 6);
+            $gzip = gzencode($artifact, 6);
 
             if ($gzip !== false && !AtomicFileWriter::write($this->gzipPath, $gzip)) {
                 $this->emitDebugHeaders('gzip-write-failed');
@@ -208,9 +227,58 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $this->emitDebugHeaders('stored');
     }
 
+    private function buildArtifactBody(string $body): ?string
+    {
+        // The live response keeps the visitor's own token. A shared artifact must
+        // not hand one guest session's token to every visitor: blank it and let the
+        // browser fetch a fresh token only when a request actually needs one.
+        $artifact = ResponseSafety::removeScriptOptionToken($body, $removed);
+
+        if ($removed === 0) {
+            return $artifact;
+        }
+
+        $loader = $this->buildTokenRefreshScriptTag();
+        $position = stripos($artifact, '</head>');
+
+        if ($loader === '' || $position === false) {
+            return null;
+        }
+
+        return substr_replace($artifact, $loader . "\n", $position, 0);
+    }
+
+    private function buildTokenRefreshScriptTag(): string
+    {
+        $file = JPATH_ROOT . '/media/plg_system_maxcache/js/csrf-refresh.js';
+
+        if (!is_file($file) || !is_readable($file) || !PluginHelper::isEnabled('ajax', 'maxcachefragment')) {
+            return '';
+        }
+
+        $root = rtrim(Uri::root(true), '/');
+        $src = $root . '/media/plg_system_maxcache/js/csrf-refresh.js?' . substr((string) md5_file($file), 0, 8);
+        $endpoint = $root . '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
+
+        return '<script src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" defer'
+            . ' data-maxcache-token-endpoint="' . htmlspecialchars($endpoint, ENT_QUOTES, 'UTF-8') . '"></script>';
+    }
+
+    private function rejectResponse(string $reason): void
+    {
+        $this->eligible = false;
+        $this->removeCurrentArtifacts();
+        $this->getApplication()->allowCache(false);
+        $this->getApplication()->setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate', true);
+        $this->markRejected($reason);
+    }
+
     private function removeCurrentArtifacts(): void
     {
-        foreach ([$this->targetPath, $this->gzipPath] as $path) {
+        // An old gzip artifact can remain after write_gzip has been switched off.
+        $gzipPath = $this->targetPath !== null ? $this->targetPath . '_gzip' : null;
+
+        foreach ([$this->targetPath, $gzipPath] as $path) {
             if ($path === null || !is_file($path)) {
                 continue;
             }
@@ -470,6 +538,11 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         $action = $input->getCmd('maxcache_action');
+
+        if (!$this->canRunAdminAction($action)) {
+            throw new \RuntimeException(Text::_('JERROR_ALERTNOAUTHOR'), 403);
+        }
+
         $hasValidToken = \in_array($action, ['enable_regularlabs', 'disable_regularlabs'], true)
             ? (Session::checkToken('post') || Session::checkToken('get'))
             : Session::checkToken('post');
@@ -543,17 +616,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         try {
-            $snippet = SnippetBuilder::build(
-                (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
-                [
-                    'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
-                    'site_hosts' => $this->params->get('site_hosts', ''),
-                    'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
-                    'bypass_cookies' => $this->params->get('bypass_cookies', ''),
-                    ...$this->getJoomlaCookieSnippetParams(),
-                    'allowed_query_params' => $this->params->get('allowed_query_params', ''),
-                ]
-            );
+            $snippet = $this->buildCurrentSnippet();
 
             if (AdminToolsManager::isAvailable()) {
                 $result = AdminToolsManager::applySnippet(
@@ -614,6 +677,21 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         return true;
     }
 
+    private function canRunAdminAction(string $action): bool
+    {
+        $identity = $this->getApplication()->getIdentity();
+
+        if (!$identity || $identity->guest || !$identity->authorise('core.login.admin')) {
+            return false;
+        }
+
+        // Purging follows Joomla's cache-management ACL. Server rules and plugin
+        // integration settings require global administration privileges.
+        return $action === 'purge_cache'
+            ? $identity->authorise('core.manage', 'com_cache')
+            : $identity->authorise('core.admin');
+    }
+
     private function shouldRenderAdminPurgeButton(): bool
     {
         $app = $this->getApplication();
@@ -623,9 +701,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return false;
         }
 
-        $identity = $app->getIdentity();
-
-        if (!$identity || $identity->guest) {
+        if (!$this->canRunAdminAction('purge_cache')) {
             return false;
         }
 
@@ -810,36 +886,13 @@ HTML;
 
     private function buildCurrentSnippet(): string
     {
-        return SnippetBuilder::build(
-            (string) $this->params->get('server_snippet_mode', 'mod_maxcache'),
-            [
-                'cache_root' => $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
-                'site_hosts' => $this->params->get('site_hosts', ''),
-                'exclude' => implode("\n", $this->getEffectiveCustomExcludePatterns()),
-                'bypass_cookies' => $this->params->get('bypass_cookies', ''),
-                ...$this->getJoomlaCookieSnippetParams(),
-                'allowed_query_params' => $this->params->get('allowed_query_params', ''),
-            ]
-        );
-    }
+        $settings = [];
 
-    private function getJoomlaCookieSnippetParams(): array
-    {
-        try {
-            $config = Factory::getConfig();
-
-            return [
-                'joomla_secret' => (string) $config->get('secret', ''),
-                'joomla_session_name' => (string) $config->get('session_name', ''),
-                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
-            ];
-        } catch (\Throwable $exception) {
-            return [
-                'joomla_secret' => '',
-                'joomla_session_name' => '',
-                'joomla_session_cookie_names' => BypassCookieNames::factorySessionCookieNames(),
-            ];
+        foreach (SnippetParams::SETTING_KEYS as $key) {
+            $settings[$key] = $this->params->get($key);
         }
+
+        return SnippetParams::buildSnippet($settings);
     }
 
     private function getAdminReturnUrl(): string
@@ -909,7 +962,13 @@ HTML;
             $internalUrl .= '?' . Uri::buildQuery($this->router->getVars());
         }
 
-        return RegexPatternMatcher::matchesAny($exclusions, $externalUrl . ' ' . $internalUrl);
+        // Match anchored patterns against real individual subjects, including
+        // the public path used by the server snippet. Keep the old combined
+        // subject as a compatibility fallback for existing non-anchored rules.
+        return RegexPatternMatcher::matchesAny($exclusions, $externalUrl)
+            || RegexPatternMatcher::matchesAny($exclusions, Uri::getInstance()->getPath())
+            || RegexPatternMatcher::matchesAny($exclusions, $internalUrl)
+            || RegexPatternMatcher::matchesAny($exclusions, $externalUrl . ' ' . $internalUrl);
     }
 
     private function hasBypassCookie(): bool
@@ -931,27 +990,15 @@ HTML;
         return false;
     }
 
-    private function hasAllowedQueryParameters(): bool
+    private function hasNoQueryString(): bool
     {
-        $query = Uri::getInstance()->getQuery(true);
+        // The writer currently has no query-specific cache key. An allowlisted
+        // query must not overwrite the canonical URL's artifact. Check the raw
+        // request as well, since routing may have modified the current Uri.
+        $requestUri = (string) $this->getApplication()->getInput()->server->getString('REQUEST_URI', '');
 
-        if ($query === []) {
-            return true;
-        }
-
-        $allowed = $this->normalizeLineList((string) $this->params->get('allowed_query_params', ''));
-
-        if ($allowed === []) {
-            return false;
-        }
-
-        foreach (array_keys($query) as $key) {
-            if (!\in_array((string) $key, $allowed, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return (string) parse_url($requestUri, PHP_URL_QUERY) === ''
+            && Uri::getInstance()->getQuery(true) === [];
     }
 
     private function hasReservedBypassQuery(): bool
@@ -995,9 +1042,7 @@ HTML;
 
     private function getEffectiveCustomExcludePatterns(): array
     {
-        return SystemCacheSettings::mergeUrlPatterns(BuiltInExclusions::filterCustomPatterns(
-            $this->normalizeLineList((string) $this->params->get('exclude', ''))
-        ));
+        return SnippetParams::effectiveExclusions((string) $this->params->get('exclude', ''));
     }
 
     private function isMobileRequest(): bool
@@ -1009,7 +1054,8 @@ HTML;
 
     private function responseSupportsStaticWrite(): bool
     {
-        $headers = $this->getApplication()->getHeaders();
+        $app = $this->getApplication();
+        $headers = $app->getHeaders();
         $hasLocation = false;
         $status = '200';
         $contentType = 'text/html';
@@ -1031,7 +1077,8 @@ HTML;
             }
         }
 
-        return !$hasLocation
+        return $app->getResponse()->getStatusCode() === 200
+            && !$hasLocation
             && str_starts_with($status, '200')
             && str_contains(strtolower($contentType), 'text/html');
     }
