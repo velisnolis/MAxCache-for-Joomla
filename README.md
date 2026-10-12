@@ -251,6 +251,14 @@ Stored artifacts no longer keep the `csrf.token` script option of the request
 that generated them. The browser fetches the visitor's own token only when a
 non-GET `Joomla.request()` needs it; see `docs/dynamic-fragments.md`.
 `maxcache:diagnose` reports older artifacts that still contain one.
+Pages with a script option token are not stored unless the refresh loader can
+be inserted; otherwise MAxCache reports `csrf-refresh-unavailable` and removes
+older artifacts for that route.
+
+New public cache directories use `0755`, including under a restrictive PHP
+umask, so Apache can traverse them when it runs as a different Unix user from
+PHP. Private backup directories retain the separate `0750` default. Existing
+cache directory permissions require a scoped operational repair.
 
 These source changes are not a release or a deployment. When deploying later,
 review/apply the updated server snippet and perform an approved, backed-up purge

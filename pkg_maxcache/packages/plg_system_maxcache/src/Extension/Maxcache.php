@@ -198,12 +198,17 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         $directory = \dirname($this->targetPath);
 
-        if (!DirectoryOperations::ensure($directory)) {
+        if (!DirectoryOperations::ensurePublicCache($directory)) {
             $this->emitDebugHeaders('mkdir-failed');
             return;
         }
 
         $artifact = $this->buildArtifactBody($body);
+
+        if ($artifact === null) {
+            $this->rejectResponse('csrf-refresh-unavailable');
+            return;
+        }
 
         if (!AtomicFileWriter::write($this->targetPath, $artifact)) {
             $this->emitDebugHeaders('write-failed');
@@ -222,7 +227,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $this->emitDebugHeaders('stored');
     }
 
-    private function buildArtifactBody(string $body): string
+    private function buildArtifactBody(string $body): ?string
     {
         // The live response keeps the visitor's own token. A shared artifact must
         // not hand one guest session's token to every visitor: blank it and let the
@@ -236,16 +241,18 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $loader = $this->buildTokenRefreshScriptTag();
         $position = stripos($artifact, '</head>');
 
-        return $loader === '' || $position === false
-            ? $artifact
-            : substr_replace($artifact, $loader . "\n", $position, 0);
+        if ($loader === '' || $position === false) {
+            return null;
+        }
+
+        return substr_replace($artifact, $loader . "\n", $position, 0);
     }
 
     private function buildTokenRefreshScriptTag(): string
     {
         $file = JPATH_ROOT . '/media/plg_system_maxcache/js/csrf-refresh.js';
 
-        if (!is_file($file) || !PluginHelper::isEnabled('ajax', 'maxcachefragment')) {
+        if (!is_file($file) || !is_readable($file) || !PluginHelper::isEnabled('ajax', 'maxcachefragment')) {
             return '';
         }
 

@@ -79,6 +79,11 @@ empty `csrf.token` and, when this AJAX plugin is enabled, the
 `com_ajax&plugin=maxcachefragment&maxcache_task=token` for the visitor's
 token, then sends the original request with it.
 
+If the AJAX plugin is disabled, the refresh script is missing or unreadable, or
+the page has no closing `</head>` where the loader can be inserted, MAxCache
+rejects the static write with `csrf-refresh-unavailable` and removes older
+plain/gzip artifacts for that route. The live response keeps the visitor's token.
+
 The token is never fetched on page load. Fetching it starts a Joomla session,
 and the session cookie makes that visitor's later requests bypass the static
 cache, so it only happens when the visitor actually sends a request.

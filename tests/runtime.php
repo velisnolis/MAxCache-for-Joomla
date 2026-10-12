@@ -284,12 +284,41 @@ check('artifact loads the token refresh script before </head>', true,
 check('gzip artifact matches the blanked plain artifact', $stored, gzdecode((string) file_get_contents($artifact . '_gzip')));
 check('page with a script option token is still stored', 'stored', sentHeader($app, 'X-MAxCache-State'));
 
-\Joomla\CMS\Plugin\PluginHelper::$enabled = [];
-siteRequest('/news', $tokenPage);
-$stored = (string) file_get_contents($artifact);
-check('without the fragment plugin the token is still blanked', true, str_contains($stored, '"csrf.token":""'));
-check('without the fragment plugin no refresh script is added', false, str_contains($stored, 'csrf-refresh.js'));
+foreach (['disabled plugin', 'missing script', 'missing head'] as $unavailable) {
+    \Joomla\CMS\Plugin\PluginHelper::$enabled = $unavailable === 'disabled plugin' ? [] : ['ajax/maxcachefragment'];
+    if ($unavailable === 'missing script') {
+        unlink($loaderFile);
+    } else {
+        file_put_contents($loaderFile, '// loader');
+    }
+    AtomicFileWriter::write($artifact, 'old shared HTML');
+    AtomicFileWriter::write($artifact . '_gzip', 'old shared gzip');
+    $body = $unavailable === 'missing head' ? str_replace('</head>', '', $tokenPage) : $tokenPage;
+    $app = siteRequest('/news', $body);
+    check($unavailable . ' prevents a tokenless artifact without refresh', false, is_file($artifact));
+    check($unavailable . ' removes the old gzip companion', false, is_file($artifact . '_gzip'));
+    check($unavailable . ' keeps the live visitor token', $body, $app->body);
+    check($unavailable . ' reports the refresh bypass', 'csrf-refresh-unavailable', sentHeader($app, 'X-MAxCache-Reason'));
+    check($unavailable . ' sends no-store', true, str_contains(sentHeader($app, 'Cache-Control'), 'no-store'));
+}
 unlink($loaderFile);
+\Joomla\CMS\Plugin\PluginHelper::$enabled = [];
+
+// The static reader can run as a different Unix user from PHP (cPanel/LSAPI).
+// New public cache directories must remain traversable even with a private umask.
+DirectoryOperations::delete(JPATH_ROOT . '/maxcache');
+$originalUmask = umask(0027);
+try {
+    siteRequest('/permissions/new', '<html>public</html>');
+    foreach (['', '/example.test', '/example.test/permissions', '/example.test/permissions/new'] as $suffix) {
+        check('public cache directory is readable by Apache: ' . $suffix, 0755,
+            fileperms(JPATH_ROOT . '/maxcache' . $suffix) & 0777);
+    }
+} finally {
+    umask($originalUmask);
+}
+check('public directory creation restores the caller umask', $originalUmask, umask());
+DirectoryOperations::delete(JPATH_ROOT . '/maxcache');
 
 $publicBody = '<html>public page without tokens</html>';
 $app = siteRequest('/news', $publicBody, [], ['write_gzip' => 1]);
