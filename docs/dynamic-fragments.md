@@ -65,12 +65,42 @@ Logged-in requests should still bypass the static page cache through the
 configured Joomla session-cookie safeguard. The fragment is an additional
 boundary for guest pages; it is not a replacement for session bypass.
 
+## CSRF token in core.js script options
+
+Joomla adds the session form token to the `csrf.token` script option of every
+page that loads `core.js`, and `Joomla.request()` sends it in `X-CSRF-Token`
+with every non-GET request. A shared static artifact would hand the token of
+the guest who generated it to every visitor.
+
+The live response keeps the visitor's own token. The stored artifact gets an
+empty `csrf.token` and, when this AJAX plugin is enabled, the
+`media/plg_system_maxcache/js/csrf-refresh.js` script. That script wraps
+`Joomla.request()`: a non-GET request on a cached page first asks
+`com_ajax&plugin=maxcachefragment&maxcache_task=token` for the visitor's
+token, then sends the original request with it.
+
+The token is never fetched on page load. Fetching it starts a Joomla session,
+and the session cookie makes that visitor's later requests bypass the static
+cache, so it only happens when the visitor actually sends a request.
+
+Two limits:
+
+- On a cached page, a non-GET `Joomla.request()` returns a Promise when called
+  with `promise: true`, and `undefined` otherwise, instead of the XHR object.
+- Scripts that read `Joomla.getOptions('csrf.token')` themselves receive an
+  empty string. They should call `window.MAxCache.csrfToken()`, which resolves
+  to the visitor's token.
+
+Forms that render a hidden token input are still never stored; use a fragment
+for them as described above.
+
 ## Safety and validation
 
 The system plugin refuses to write a static artifact when final HTML contains
 a Joomla form token and removes any matching older artifact. The console
 diagnosis also reports existing token-bearing files as
-`csrf-token-in-cache`.
+`csrf-token-in-cache`, including older artifacts that still carry a
+`csrf.token` script option.
 
 Before enabling a route in production, verify:
 

@@ -203,13 +203,15 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        if (!AtomicFileWriter::write($this->targetPath, $body)) {
+        $artifact = $this->buildArtifactBody($body);
+
+        if (!AtomicFileWriter::write($this->targetPath, $artifact)) {
             $this->emitDebugHeaders('write-failed');
             return;
         }
 
         if ($this->gzipPath !== null) {
-            $gzip = gzencode($body, 6);
+            $gzip = gzencode($artifact, 6);
 
             if ($gzip !== false && !AtomicFileWriter::write($this->gzipPath, $gzip)) {
                 $this->emitDebugHeaders('gzip-write-failed');
@@ -218,6 +220,41 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         $this->emitDebugHeaders('stored');
+    }
+
+    private function buildArtifactBody(string $body): string
+    {
+        // The live response keeps the visitor's own token. A shared artifact must
+        // not hand one guest session's token to every visitor: blank it and let the
+        // browser fetch a fresh token only when a request actually needs one.
+        $artifact = ResponseSafety::removeScriptOptionToken($body, $removed);
+
+        if ($removed === 0) {
+            return $artifact;
+        }
+
+        $loader = $this->buildTokenRefreshScriptTag();
+        $position = stripos($artifact, '</head>');
+
+        return $loader === '' || $position === false
+            ? $artifact
+            : substr_replace($artifact, $loader . "\n", $position, 0);
+    }
+
+    private function buildTokenRefreshScriptTag(): string
+    {
+        $file = JPATH_ROOT . '/media/plg_system_maxcache/js/csrf-refresh.js';
+
+        if (!is_file($file) || !PluginHelper::isEnabled('ajax', 'maxcachefragment')) {
+            return '';
+        }
+
+        $root = rtrim(Uri::root(true), '/');
+        $src = $root . '/media/plg_system_maxcache/js/csrf-refresh.js?' . substr((string) md5_file($file), 0, 8);
+        $endpoint = $root . '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
+
+        return '<script src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" defer'
+            . ' data-maxcache-token-endpoint="' . htmlspecialchars($endpoint, ENT_QUOTES, 'UTF-8') . '"></script>';
     }
 
     private function rejectResponse(string $reason): void

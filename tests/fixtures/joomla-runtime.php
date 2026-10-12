@@ -97,6 +97,14 @@ namespace Joomla\CMS\Plugin {
         {
             return true;
         }
+
+        /** @var string[] Enabled plugins as "type/element". */
+        public static array $enabled = [];
+
+        public static function isEnabled(string $type, ?string $plugin = null): bool
+        {
+            return \in_array($type . '/' . $plugin, self::$enabled, true);
+        }
     }
 }
 
@@ -200,7 +208,7 @@ namespace Joomla\CMS\Uri {
         public function getHost(): string { return 'example.test'; }
         public function getScheme(): string { return 'https'; }
         public function toString(): string { return 'https://example.test' . self::$request; }
-        public static function root(): string { return 'https://example.test/'; }
+        public static function root(bool $pathOnly = false): string { return $pathOnly ? '' : 'https://example.test/'; }
     }
 }
 

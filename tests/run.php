@@ -377,6 +377,21 @@ assertSameValue('response safety detects a Joomla form token', $token, ResponseS
 assertSameValue('response safety detects reordered and uppercase Joomla token attributes', $token, ResponseSafety::findJoomlaFormToken($reorderedTokenInput));
 assertSameValue('response safety ignores ordinary hidden inputs', false, ResponseSafety::containsJoomlaFormToken('<input type="hidden" name="option" value="1">'));
 
+$scriptOptions = '<script type="application/json" class="joomla-script-options new">'
+    . '{"csrf.token":"3d641ea424ca1d6ed66b2dba0123abcd","system.paths":{"root":""}}</script>';
+assertSameValue('response safety detects the core.js csrf.token script option', true,
+    ResponseSafety::containsScriptOptionToken($scriptOptions));
+$blankedOptions = ResponseSafety::removeScriptOptionToken($scriptOptions, $removedTokens);
+assertSameValue('response safety blanks only the csrf.token value',
+    '<script type="application/json" class="joomla-script-options new">{"csrf.token":"","system.paths":{"root":""}}</script>',
+    $blankedOptions);
+assertSameValue('response safety counts blanked script option tokens', 1, $removedTokens);
+assertSameValue('a blanked script option token is no longer reported', false,
+    ResponseSafety::containsScriptOptionToken($blankedOptions));
+assertSameValue('pages without the script option are left unchanged', '<html>plain</html>',
+    ResponseSafety::removeScriptOptionToken('<html>plain</html>', $removedTokens));
+assertSameValue('pages without the script option report no blanked token', 0, $removedTokens);
+
 foreach ([
     ['public, max-age=600', false],
     ['no-cache', false],
@@ -461,6 +476,15 @@ assertSameValue(
     CacheOperations::purge($operationsDir)
 );
 assertSameValue('cache operations remove the cache root', false, is_dir($operationsDir));
+
+// Artifacts written before the script option token was blanked must be purged too.
+mkdir($operationsDir . '/legacy', 0700, true);
+file_put_contents($operationsDir . '/legacy/index-https.html', $scriptOptions);
+file_put_contents($operationsDir . '/legacy/blank.html', $blankedOptions);
+assertSameValue('cache operations report artifacts with a cached csrf.token script option',
+    ['files' => 1, 'samples' => ['legacy/index-https.html'], 'unreadable' => 0],
+    CacheOperations::joomlaFormTokenArtifacts($operationsDir));
+CacheOperations::purge($operationsDir);
 
 $directoryOperationsRoot = sys_get_temp_dir() . '/maxcache-directory-tests-' . getmypid() . '-' . str_replace('.', '', uniqid('', true));
 $nestedDirectory = $directoryOperationsRoot . '/host/ca/page';
@@ -556,6 +580,19 @@ passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/runtime.p
 
 if ($runtimeStatus !== 0) {
     exit($runtimeStatus);
+}
+
+// The browser token refresh script needs Node; say so instead of skipping silently.
+$node = trim((string) shell_exec('command -v node 2>/dev/null'));
+
+if ($node === '') {
+    echo "csrf-refresh tests: SKIPPED (node not found)\n";
+} else {
+    passthru(escapeshellarg($node) . ' ' . escapeshellarg(__DIR__ . '/csrf-refresh.test.js'), $nodeStatus);
+
+    if ($nodeStatus !== 0) {
+        exit($nodeStatus);
+    }
 }
 
 echo "All tests passed.\n";

@@ -210,6 +210,8 @@ tests/route-report.sh
 They use Joomla API doubles and an isolated temporary filesystem, not a live
 Joomla installation. They verify denied/authorized admin actions, transmitted
 safety headers, plain/gzip artifacts, and query requests preserving canonical HTML.
+When Node is available it also runs `tests/csrf-refresh.test.js`, which tests the
+browser token refresh script against doubles for `core.js` and `fetch`.
 
 ## Unreleased Runtime Safeguards
 
@@ -244,6 +246,11 @@ with synthetic canaries on a single-language and a multilingual site (CloudLinux
 `mod_maxcache`); see `docs/validation-2026-10-12.md`. Names are case-sensitive.
 Leave the list empty when a page reads these parameters in PHP, for example a form
 field prefilled from `utm_source`. The names `p` and `maxcache_probe` are ignored.
+
+Stored artifacts no longer keep the `csrf.token` script option of the request
+that generated them. The browser fetches the visitor's own token only when a
+non-GET `Joomla.request()` needs it; see `docs/dynamic-fragments.md`.
+`maxcache:diagnose` reports older artifacts that still contain one.
 
 These source changes are not a release or a deployment. When deploying later,
 review/apply the updated server snippet and perform an approved, backed-up purge

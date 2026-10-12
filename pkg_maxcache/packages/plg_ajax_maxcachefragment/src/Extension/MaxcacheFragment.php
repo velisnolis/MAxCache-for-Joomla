@@ -11,6 +11,7 @@ use Joomla\CMS\Event\Plugin\AjaxEvent;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Helper\ModuleHelper;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\CMS\Session\Session;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Database\ParameterType;
 use Joomla\Event\SubscriberInterface;
@@ -37,6 +38,11 @@ final class MaxcacheFragment extends CMSPlugin implements SubscriberInterface
 
         if (strtoupper((string) $app->getInput()->server->getString('REQUEST_METHOD', 'GET')) !== 'GET') {
             throw new \RuntimeException('MAxCache fragments only accept GET requests.', 405);
+        }
+
+        if ($app->getInput()->getCmd('maxcache_task') === 'token') {
+            $this->respondWithFormToken($event);
+            return;
         }
 
         $fragmentId = $app->getInput()->getInt('fragment_id');
@@ -74,6 +80,20 @@ final class MaxcacheFragment extends CMSPlugin implements SubscriberInterface
 
         $app->setHeader('X-MAxCache-Fragment', (string) $fragmentId, true);
         $event->addResult($html);
+    }
+
+    private function respondWithFormToken(AjaxEvent $event): void
+    {
+        $app = $this->getApplication();
+
+        // Static pages ship without a token. Same-origin scripts ask for the
+        // visitor's own session token just before they send a POST request.
+        if ($app->getInput()->server->getString('HTTP_X_REQUESTED_WITH', '') !== 'XMLHttpRequest') {
+            throw new \InvalidArgumentException('Invalid MAxCache token request.', 400);
+        }
+
+        $app->getDocument()->setMimeEncoding('application/json');
+        $event->addResult((string) json_encode(['token' => Session::getFormToken()]));
     }
 
     private static function sign(int $fragmentId, int $sourceId, string $secret): string

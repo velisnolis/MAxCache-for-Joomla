@@ -265,6 +265,32 @@ foreach (['login', 'message'] as $change) {
     check($change . ' during rendering reports rejection', 'response-state', sentHeader($app, 'X-MAxCache-Reason'));
 }
 
+// Joomla puts the session token in core.js script options on every page. The
+// visitor who generated the page keeps it; the shared artifact must not.
+$tokenOptions = '<script type="application/json" class="joomla-script-options new">'
+    . '{"csrf.token":"0123456789abcdef0123456789abcdef"}</script>';
+$tokenPage = '<html><head>' . $tokenOptions . '</head><body>public</body></html>';
+$loaderFile = JPATH_ROOT . '/media/plg_system_maxcache/js/csrf-refresh.js';
+DirectoryOperations::ensure(dirname($loaderFile));
+file_put_contents($loaderFile, '// loader');
+\Joomla\CMS\Plugin\PluginHelper::$enabled = ['ajax/maxcachefragment'];
+$app = siteRequest('/news', $tokenPage, [], ['write_gzip' => 1]);
+$stored = (string) file_get_contents($artifact);
+check('live response keeps the visitor token', true, str_contains($app->body, '"csrf.token":"0123456789abcdef0123456789abcdef"'));
+check('artifact blanks the shared csrf.token', true, str_contains($stored, '"csrf.token":""'));
+check('artifact contains no session token', false, str_contains($stored, '0123456789abcdef0123456789abcdef'));
+check('artifact loads the token refresh script before </head>', true,
+    (bool) preg_match('#<script src="/media/plg_system_maxcache/js/csrf-refresh\.js\?[0-9a-f]{8}" defer data-maxcache-token-endpoint="/index\.php\?option=com_ajax&amp;plugin=maxcachefragment&amp;format=raw&amp;maxcache_task=token"></script>\n</head>#', $stored));
+check('gzip artifact matches the blanked plain artifact', $stored, gzdecode((string) file_get_contents($artifact . '_gzip')));
+check('page with a script option token is still stored', 'stored', sentHeader($app, 'X-MAxCache-State'));
+
+\Joomla\CMS\Plugin\PluginHelper::$enabled = [];
+siteRequest('/news', $tokenPage);
+$stored = (string) file_get_contents($artifact);
+check('without the fragment plugin the token is still blanked', true, str_contains($stored, '"csrf.token":""'));
+check('without the fragment plugin no refresh script is added', false, str_contains($stored, 'csrf-refresh.js'));
+unlink($loaderFile);
+
 $publicBody = '<html>public page without tokens</html>';
 $app = siteRequest('/news', $publicBody, [], ['write_gzip' => 1]);
 check('public page remains cacheable with Joomla browser cache disabled', $publicBody, is_file($artifact) ? file_get_contents($artifact) : null);
