@@ -2,8 +2,8 @@
 <extension version="5.0" type="package" method="upgrade">
     <name>MAxCache for Joomla</name>
     <packagename>maxcache</packagename>
-    <version>0.1.39</version>
-    <creationDate>2026-03-27</creationDate>
+    <version>0.1.40</version>
+    <creationDate>2026-10-12</creationDate>
     <author>Alex Miras</author>
     <authorEmail>alex@miras.pro</authorEmail>
     <url>https://miras.pro</url>

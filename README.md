@@ -30,6 +30,27 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.40
+
+- Public cache directories are created with `0755`, including under a restrictive
+  PHP umask, so Apache can read artifacts when it runs as a different Unix user.
+- Shared artifacts no longer retain a visitor's `csrf.token`. The browser obtains
+  its own token on demand; pages are not stored when the refresh loader is unavailable.
+- Admin actions enforce Joomla ACLs as well as CSRF validation. The final response
+  is checked before sending; private responses, errors and hidden-token forms
+  remove matching older plain/gzip artifacts.
+- Session-cookie exclusions, anchored URL patterns, gzip MIME declarations and
+  snippet hashes are consistent across the administrator, frontend and CLI.
+- Optional tracking query parameters serve the canonical cached page. All queries
+  continue to bypass static writes, preserving the canonical artifact.
+- Route reports identify incomplete token probes and correctly accept routes
+  rendered and stored live after a purge.
+
+After updating, review existing cache directory permissions, review/reapply the
+server snippet, and purge/regenerate old artifacts with a verified backup and
+pre/post route checks. Installing the package alone does not repair previously
+stored pages or existing directory permissions.
+
 ## New in 0.1.39
 
 - Joomla 6 filesystem compatibility:
@@ -213,7 +234,7 @@ safety headers, plain/gzip artifacts, and query requests preserving canonical HT
 When Node is available it also runs `tests/csrf-refresh.test.js`, which tests the
 browser token refresh script against doubles for `core.js` and `fetch`.
 
-## Unreleased Runtime Safeguards
+## Runtime Safeguards in 0.1.40
 
 Administrative web actions require a logged-in identity with backend access.
 Purging also requires `core.manage` on `com_cache`; applying server rules or
@@ -231,7 +252,7 @@ headers, which Joomla adds later inside `respond()`.
 Query-string caching is temporarily disabled, including previously allowlisted
 parameters: the writer does not yet implement query-specific cache keys. The
 saved `allowed_query_params` field is retained for compatibility but has no effect;
-generated snippets no longer emit `MaxCacheQSAllowedParams`. This preserves the
+generated snippets no longer emit `MaxCacheQSAllowedParams` for that field. This preserves the
 canonical URL's HTML instead of replacing it with search or pagination results.
 
 `tracking_query_params` is an optional, empty-by-default list of parameters that
@@ -260,9 +281,8 @@ umask, so Apache can traverse them when it runs as a different Unix user from
 PHP. Private backup directories retain the separate `0750` default. Existing
 cache directory permissions require a scoped operational repair.
 
-These source changes are not a release or a deployment. When deploying later,
-review/apply the updated server snippet and perform an approved, backed-up purge
-with pre/post route checks. Old artifacts served before PHP runs are not repaired
+When deploying 0.1.40, review/apply the updated server snippet and perform an
+approved, backed-up purge with pre/post route checks. Old artifacts served before PHP runs are not repaired
 by installing a write guard alone.
 
 ## Joomla Console Commands

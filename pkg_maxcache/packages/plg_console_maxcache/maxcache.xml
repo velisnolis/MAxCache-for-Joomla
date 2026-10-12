@@ -2,12 +2,12 @@
 <extension type="plugin" group="console" method="upgrade">
 	<name>plg_console_maxcache</name>
 	<author>Alex Miras</author>
-	<creationDate>2026-07</creationDate>
+	<creationDate>2026-10-12</creationDate>
 	<copyright>(C) 2026 Alex Miras</copyright>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.39</version>
+	<version>0.1.40</version>
 	<description>Joomla console commands for MAxCache status, diagnosis, and guarded purge operations.</description>
 	<namespace path="src">Vendor\Plugin\Console\Maxcache</namespace>
 	<files>
