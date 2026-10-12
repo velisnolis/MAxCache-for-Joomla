@@ -239,8 +239,9 @@ cached page; PHP still never writes from such a request. In Apache mode, any oth
 key falls through to Joomla. In `mod_maxcache` mode the snippet lists the names in
 both `MaxCacheQSAllowedParams` and `MaxCacheQSIgnoredParams`, relying on CloudLinux's
 documented behaviour: a tracking-only query yields an empty `{QS_SUFFIX}`, and other
-keys keep a `#query` suffix the writer never creates. That behaviour has not yet been
-verified on a server, so validate it on staging before enabling the list there.
+keys keep a `#query` suffix the writer never creates. This was verified on 2026-10-12
+with synthetic canaries on a single-language and a multilingual site (CloudLinux
+`mod_maxcache`); see `docs/validation-2026-10-12.md`. Names are case-sensitive.
 Leave the list empty when a page reads these parameters in PHP, for example a form
 field prefilled from `utm_source`. The names `p` and `maxcache_probe` are ignored.
 
