@@ -81,6 +81,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             'onContentChangeState' => 'onContentChangeState',
             'onContentAfterDelete' => 'onContentAfterDelete',
             'onExtensionAfterSave' => 'onExtensionAfterSave',
+            'onMaxcachePurgeAll' => 'onMaxcachePurgeAll',
         ];
     }
 
@@ -410,6 +411,28 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                 'warning'
             );
         }
+    }
+
+    /**
+     * Full purge requested by another extension in the same request, for example Miras Backups after
+     * restoring files. It is not reachable over HTTP: only code already running inside Joomla can
+     * dispatch it, so it needs no ACL or token of its own.
+     *
+     * The outcome is set on the event argument "result": the purge statistics plus
+     * "joomla_caches_cleaned", or ["error" => message]. Callers that find no result know the
+     * installed MAx Cache predates this event.
+     */
+    public function onMaxcachePurgeAll(Event $event): void
+    {
+        try {
+            $result = $this->purgeAll();
+            $result['joomla_caches_cleaned'] = $this->cleanJoomlaCaches();
+            $this->clearSnippetStatusCache();
+        } catch (\Throwable $exception) {
+            $result = ['error' => $exception->getMessage()];
+        }
+
+        $event->setArgument('result', $result);
     }
 
     private function purgeChangedItems(string $context, array $items): void
@@ -1110,15 +1133,21 @@ HTML;
         return substr(md5(serialize($parts)), 0, 10);
     }
 
-    private function purgeAll(): void
+    /**
+     * @return array{root: string, removed: bool, files: int, bytes: int, skipped?: string}
+     */
+    private function purgeAll(): array
     {
         $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
+        $result = ['root' => $root, 'removed' => false, 'files' => 0, 'bytes' => 0, 'skipped' => 'unsafe_root'];
 
         if ($root !== '' && CacheOperations::isSafeRoot($root, \defined('JPATH_ROOT') ? JPATH_ROOT : null)) {
-            CacheOperations::purge($root, \defined('JPATH_ROOT') ? JPATH_ROOT : null);
+            $result = CacheOperations::purge($root, \defined('JPATH_ROOT') ? JPATH_ROOT : null);
         }
 
         $this->touchFullPurgeMarker();
+
+        return $result;
     }
 
     private function handleScheduledFullRegeneration(): void

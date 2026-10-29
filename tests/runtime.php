@@ -365,6 +365,24 @@ foreach (['apache', 'mod_maxcache'] as $mode) {
     check($mode . ' snippet does not enable query variants', false, str_contains($snippet, 'MaxCacheQSAllowedParams'));
 }
 
+// Other extensions (Miras Backups after a file restore) ask for a full purge with an in-process event.
+$eventArtifact = JPATH_ROOT . '/maxcache/example.test/event/index.html';
+mkdir(dirname($eventArtifact), 0755, true);
+file_put_contents($eventArtifact, 'stale');
+$cleanCallsBefore = Factory::$cacheCleanCalls;
+$app = new Application('administrator', new Input([]), new Identity(true, []));
+$event = new \Joomla\Event\Event('onMaxcachePurgeAll', ['result' => null]);
+pluginFor($app)->onMaxcachePurgeAll($event);
+$result = $event->getArgument('result');
+check('purge event removes the static cache', false, is_file($eventArtifact));
+check('purge event reports what it removed', true, is_array($result) && $result['removed'] === true && $result['files'] >= 1 && !isset($result['error']));
+check('purge event also cleans Joomla caches', true, Factory::$cacheCleanCalls > $cleanCallsBefore && $result['joomla_caches_cleaned'] > 0);
+check('purge event is subscribed', 'onMaxcachePurgeAll', Maxcache::getSubscribedEvents()['onMaxcachePurgeAll'] ?? null);
+
+$event = new \Joomla\Event\Event('onMaxcachePurgeAll', ['result' => null]);
+pluginFor($app, ['cache_root' => '/'])->onMaxcachePurgeAll($event);
+check('purge event refuses an unsafe cache root', 'unsafe_root', $event->getArgument('result')['skipped'] ?? null);
+
 echo 'Runtime tests: ' . $assertions . " assertions\n";
 if ($failures !== []) {
     fwrite(STDERR, implode("\n", $failures) . "\n");

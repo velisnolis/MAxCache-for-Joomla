@@ -302,6 +302,31 @@ php cli/joomla.php maxcache:purge --confirm
 file/byte count it would remove. The command refuses an empty, relative, symlinked,
 site-root, or known system-level cache path.
 
+## Purging From Another Extension
+
+Other extensions in the same Joomla request can ask for the same full purge as the
+admin button (static cache plus Joomla caches) by dispatching `onMaxcachePurgeAll`.
+Miras Backups does it after restoring files. The event is not reachable over HTTP,
+so it carries no ACL or token check of its own; the caller is already code running
+inside Joomla.
+
+```php
+use Joomla\CMS\Factory;
+use Joomla\CMS\Plugin\PluginHelper;
+use Joomla\Event\Event;
+
+if (PluginHelper::isEnabled('system', 'maxcache')) {
+    $event = new Event('onMaxcachePurgeAll', ['result' => null]);
+    Factory::getApplication()->getDispatcher()->dispatch('onMaxcachePurgeAll', $event);
+    $result = $event->getArgument('result');
+}
+```
+
+`result` is `null` when the installed MAx Cache predates the event. Otherwise it
+holds `root`, `removed`, `files`, `bytes` and `joomla_caches_cleaned`, plus
+`skipped: unsafe_root` when the configured cache root fails the same safety check
+as `maxcache:purge`, or only `error` with a message if the purge threw.
+
 ## Route Diagnostics
 
 For migration or purge checks, generate a pre/post route report with:

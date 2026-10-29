@@ -39,6 +39,13 @@ namespace Joomla\Event {
         {
             return $this->arguments[$name] ?? $default;
         }
+
+        public function setArgument(string $name, mixed $value): static
+        {
+            $this->arguments[$name] = $value;
+
+            return $this;
+        }
     }
 
     trait DispatcherAwareTrait
