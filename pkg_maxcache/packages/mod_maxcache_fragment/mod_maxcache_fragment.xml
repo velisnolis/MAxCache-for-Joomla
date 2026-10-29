@@ -2,12 +2,12 @@
 <extension type="module" client="site" method="upgrade">
 	<name>mod_maxcache_fragment</name>
 	<author>Alex Miras</author>
-	<creationDate>2026-10-12</creationDate>
+	<creationDate>2026-10-29</creationDate>
 	<copyright>(C) 2026 Alex Miras</copyright>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
 	<authorEmail>hola@alexmiras.com</authorEmail>
 	<authorUrl>https://alexmiras.com</authorUrl>
-	<version>0.1.40</version>
+	<version>0.1.41</version>
 	<description>MOD_MAXCACHE_FRAGMENT_XML_DESCRIPTION</description>
 	<namespace path="src">Vendor\Module\MaxcacheFragment</namespace>
 	<files>

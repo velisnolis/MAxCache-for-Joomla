@@ -30,6 +30,16 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.41
+
+- Other extensions can request a full purge (static cache plus Joomla caches) by
+  dispatching `onMaxcachePurgeAll` inside the same Joomla request. The outcome is
+  returned in the event's `result` argument. See
+  [Purging From Another Extension](#purging-from-another-extension).
+
+No change to the server snippet, cache layout or stored pages: updating from
+0.1.40 needs no snippet reapply or purge.
+
 ## New in 0.1.40
 
 - Public cache directories are created with `0755`, including under a restrictive
