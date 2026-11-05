@@ -30,6 +30,20 @@ The plugin currently includes:
 - snippet preview
 - explicit `Apply snippet` action with backup support
 
+## New in 0.1.42
+
+- Admin Tools status reads saved configuration without loading editor form plugins.
+  Explicit apply/rebuild runs Admin Tools' own validated commands inside the current
+  Joomla administrator request. It no longer starts a separate PHP CLI process,
+  avoiding the JCE Pro 3.0.4 `ConsoleApplication::getDocument()` failure.
+- Admin Tools backups are verified before any configuration change, use distinct
+  names across repeated applies, and the managed block is checked after rebuilding.
+- The server status field uses the saved snippet settings without PHP warnings.
+
+No change to the generated server snippet or cache artifacts. Updating from 0.1.41
+needs no purge. If a previous Admin Tools apply failed, use the explicit Apply
+snippet action after updating.
+
 ## New in 0.1.41
 
 - Other extensions can request a full purge (static cache plus Joomla caches) by
