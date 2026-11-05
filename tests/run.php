@@ -582,6 +582,12 @@ if ($runtimeStatus !== 0) {
     exit($runtimeStatus);
 }
 
+passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/admintools.php'), $adminToolsStatus);
+
+if ($adminToolsStatus !== 0) {
+    exit($adminToolsStatus);
+}
+
 // The browser token refresh script needs Node; say so instead of skipping silently.
 $node = trim((string) shell_exec('command -v node 2>/dev/null'));
 

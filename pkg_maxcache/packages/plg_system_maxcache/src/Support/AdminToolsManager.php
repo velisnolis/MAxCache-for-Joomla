@@ -9,6 +9,9 @@ namespace Vendor\Plugin\System\Maxcache\Support;
 
 use Joomla\CMS\Date\Date;
 use Joomla\CMS\Factory;
+use Joomla\CMS\Form\Form;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 \defined('_JEXEC') or die;
 
@@ -19,8 +22,7 @@ final class AdminToolsManager
 
     public static function isAvailable(): bool
     {
-        return is_dir(JPATH_ADMINISTRATOR . '/components/com_admintools')
-            && is_file(JPATH_ROOT . '/cli/joomla.php');
+        return is_dir(JPATH_ADMINISTRATOR . '/components/com_admintools');
     }
 
     public static function getStatus(string $snippet): array
@@ -100,33 +102,32 @@ final class AdminToolsManager
         }
 
         $footerBackup = self::buildFooterBackupPath();
-        @file_put_contents($footerBackup, $currentFooter);
+        self::writeBackup($footerBackup, $currentFooter);
         $exceptionDirsBackup = self::buildExceptionDirsBackupPath();
-        @file_put_contents($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        self::writeBackup($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
         $htaccessBackup = null;
         $htaccessPath = HtaccessManager::getHtaccessPath();
 
         if (is_file($htaccessPath)) {
-            $htaccessBackup = HtaccessManager::buildBackupPath();
-            @copy($htaccessPath, $htaccessBackup);
+            $htaccessBackup = HtaccessManager::buildBackupPath() . '.' . bin2hex(random_bytes(4));
+            self::writeBackup($htaccessBackup, self::readHtaccessForBackup($htaccessPath));
         }
 
-        self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:set',
-            '--key=' . self::OPTION_KEY,
-            '--value=' . $updatedFooter,
+        self::runCommand('set', [
+            '--key' => self::OPTION_KEY,
+            '--value' => $updatedFooter,
         ]);
 
         self::ensurePublicCachePathException($cacheRoot);
 
-        self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:make',
-        ]);
+        self::runCommand('make');
+
+        $status = self::getStatus($snippet);
+
+        if ($status['state'] !== 'applied' || $status['htaccess_state'] !== 'applied') {
+            throw new \RuntimeException('The MAx Cache block could not be verified after the Admin Tools rebuild.');
+        }
 
         return [
             'target' => 'admintools',
@@ -165,37 +166,38 @@ final class AdminToolsManager
             $footerBackup = null;
         } else {
             $footerBackup = self::buildFooterBackupPath();
-            @file_put_contents($footerBackup, $currentFooter);
+            self::writeBackup($footerBackup, $currentFooter);
         }
 
         $exceptionDirsBackup = self::buildExceptionDirsBackupPath();
-        @file_put_contents($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        self::writeBackup($exceptionDirsBackup, json_encode(self::getCurrentExceptionDirs(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
         $htaccessBackup = null;
         $htaccessPath = HtaccessManager::getHtaccessPath();
 
         if (is_file($htaccessPath)) {
-            $htaccessBackup = HtaccessManager::buildBackupPath();
-            @copy($htaccessPath, $htaccessBackup);
+            $htaccessBackup = HtaccessManager::buildBackupPath() . '.' . bin2hex(random_bytes(4));
+            self::writeBackup($htaccessBackup, self::readHtaccessForBackup($htaccessPath));
         }
 
         if ($updatedFooter !== null) {
-            self::runCliCommand([
-                ...self::getPhpCommand(),
-                JPATH_ROOT . '/cli/joomla.php',
-                'admintools:htmaker:set',
-                '--key=' . self::OPTION_KEY,
-                '--value=' . $updatedFooter,
+            self::runCommand('set', [
+                '--key' => self::OPTION_KEY,
+                '--value' => $updatedFooter,
             ]);
         }
 
         self::removePublicCachePathException($cacheRoot);
 
-        self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:make',
-        ]);
+        self::runCommand('make');
+
+        $remainingFooter = self::getCurrentFooter();
+
+        if ($remainingFooter === null
+            || HtaccessManager::getManagedBlock($remainingFooter) !== null
+            || HtaccessManager::getManagedBlock(HtaccessManager::readCurrentContents()) !== null) {
+            throw new \RuntimeException('The MAx Cache block is still present after the Admin Tools rebuild.');
+        }
 
         return [
             'removed' => true,
@@ -207,24 +209,25 @@ final class AdminToolsManager
 
     private static function getCurrentFooter(): ?string
     {
-        $result = self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:get',
-            '--option=' . self::OPTION_KEY,
-        ], true);
+        try {
+            $footer = self::getSavedConfiguration()->{self::OPTION_KEY} ?? '';
 
-        if ($result['exit_code'] !== 0) {
+            return is_string($footer) ? $footer : null;
+        } catch (\Throwable $exception) {
             return null;
         }
+    }
 
-        $payload = json_decode(trim($result['stdout']), true);
+    /**
+     * Read only saved values: loading form defaults dispatches editor plugins,
+     * which can require an HTML document even during console status checks.
+     */
+    private static function getSavedConfiguration(): object
+    {
+        $model = Factory::getApplication()->bootComponent('com_admintools')
+            ->getMVCFactory()->createModel('Htaccessmaker', 'Administrator');
 
-        if (!is_array($payload) || !array_key_exists(self::OPTION_KEY, $payload)) {
-            return null;
-        }
-
-        return (string) $payload[self::OPTION_KEY];
+        return $model->loadConfiguration(false);
     }
 
     /**
@@ -232,38 +235,27 @@ final class AdminToolsManager
      */
     private static function getCurrentExceptionDirs(): array
     {
-        $result = self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:get',
-            '--option=' . self::EXCEPTION_DIRS_KEY,
-        ], true);
+        $dirs = self::getSavedConfiguration()->{self::EXCEPTION_DIRS_KEY} ?? [];
 
-        if ($result['exit_code'] !== 0) {
-            return [];
+        if (!is_array($dirs)) {
+            throw new \RuntimeException('Could not read the current Admin Tools directory exceptions.');
         }
 
-        $payload = json_decode(trim($result['stdout']), true);
-
-        if (!is_array($payload) || !array_key_exists(self::EXCEPTION_DIRS_KEY, $payload) || !is_array($payload[self::EXCEPTION_DIRS_KEY])) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map('strval', $payload[self::EXCEPTION_DIRS_KEY]), static fn ($value) => trim($value) !== ''));
+        return array_values(array_filter(array_map('strval', $dirs), static fn ($value) => trim($value) !== ''));
     }
 
     private static function buildFooterBackupPath(): string
     {
         $date = (new Date())->format('Ymd-His');
 
-        return self::getBackupDirectory() . '/admintools-footer.' . $date . '.bak';
+        return self::getBackupDirectory() . '/admintools-footer.' . $date . '.' . bin2hex(random_bytes(4)) . '.bak';
     }
 
     private static function buildExceptionDirsBackupPath(): string
     {
         $date = (new Date())->format('Ymd-His');
 
-        return self::getBackupDirectory() . '/admintools-exceptiondirs.' . $date . '.bak';
+        return self::getBackupDirectory() . '/admintools-exceptiondirs.' . $date . '.' . bin2hex(random_bytes(4)) . '.bak';
     }
 
     private static function getBackupDirectory(): string
@@ -275,6 +267,25 @@ final class AdminToolsManager
         }
 
         return $dir;
+    }
+
+    private static function writeBackup(string $path, string $contents): void
+    {
+        if (@file_put_contents($path, $contents) !== strlen($contents)
+            || @file_get_contents($path) !== $contents) {
+            throw new \RuntimeException('Could not create and verify the Admin Tools backup: ' . $path);
+        }
+    }
+
+    private static function readHtaccessForBackup(string $path): string
+    {
+        $contents = @file_get_contents($path);
+
+        if ($contents === false) {
+            throw new \RuntimeException('Could not read .htaccess for backup.');
+        }
+
+        return $contents;
     }
 
     private static function ensurePublicCachePathException(string $cacheRoot): void
@@ -291,12 +302,9 @@ final class AdminToolsManager
             return;
         }
 
-        self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:set',
-            '--key=' . self::EXCEPTION_DIRS_KEY,
-            '--add=' . ltrim($publicPath, '/'),
+        self::runCommand('set', [
+            '--key' => self::EXCEPTION_DIRS_KEY,
+            '--add' => ltrim($publicPath, '/'),
         ]);
     }
 
@@ -308,111 +316,43 @@ final class AdminToolsManager
             return;
         }
 
-        self::runCliCommand([
-            ...self::getPhpCommand(),
-            JPATH_ROOT . '/cli/joomla.php',
-            'admintools:htmaker:set',
-            '--key=' . self::EXCEPTION_DIRS_KEY,
-            '--remove=' . ltrim($publicPath, '/'),
-        ], true);
+        self::runCommand('set', [
+            '--key' => self::EXCEPTION_DIRS_KEY,
+            '--remove' => ltrim($publicPath, '/'),
+        ]);
     }
 
     /**
-     * Build the PHP command used for Joomla CLI calls.
-     *
-     * On some hosts Joomla uses APCu for web requests but disables it for CLI.
-     * In that case `cli/joomla.php` crashes during bootstrap unless APCu is
-     * explicitly enabled for the spawned process.
-     *
-     * @return string[]
+     * Use Admin Tools' own validated commands in the current administrator
+     * application. This preserves its authorised save/write call chain without
+     * booting a separate CLI application where HTML-only plugins can crash.
+     * Output stays buffered; none of the command output enters the HTML page.
      */
-    private static function getPhpCommand(): array
+    private static function runCommand(string $operation, array $options = []): void
     {
-        $candidates = [];
+        $app = Factory::getApplication();
 
-        if (\defined('PHP_BINARY') && PHP_BINARY) {
-            $candidates[] = PHP_BINARY;
+        if (!$app->isClient('administrator')) {
+            throw new \RuntimeException('Apply Admin Tools server rules from the Joomla administrator.');
         }
 
-        $candidates = array_merge($candidates, [
-            '/usr/local/bin/php',
-            '/usr/bin/php',
-            '/opt/cpanel/ea-php84/root/usr/bin/php',
-            'php',
-        ]);
-
-        foreach (array_unique($candidates) as $candidate) {
-            if (
-                $candidate === 'php'
-                || (
-                    is_executable($candidate)
-                    && !preg_match('#(?:php-cgi|lsphp|php-fpm)$#i', $candidate)
-                )
-            ) {
-                $command = [$candidate];
-
-                if ((string) Factory::getConfig()->get('cache_handler') === 'apcu') {
-                    $command[] = '-d';
-                    $command[] = 'apc.enable_cli=1';
-                }
-
-                return $command;
-            }
-        }
-
-        $command = ['php'];
-
-        if ((string) Factory::getConfig()->get('cache_handler') === 'apcu') {
-            $command[] = '-d';
-            $command[] = 'apc.enable_cli=1';
-        }
-
-        return $command;
-    }
-
-    private static function runCliCommand(array $command, bool $allowFailure = false): array
-    {
-        if (!self::canExecuteCommands()) {
-            throw new \RuntimeException('PHP command execution is not available on this host.');
-        }
-
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
+        $factory = $app->bootComponent('com_admintools')->getMVCFactory();
+        // JPATH_COMPONENT still points to com_plugins in the plugin editor.
+        Form::addFormPath(JPATH_ADMINISTRATOR . '/components/com_admintools/forms');
+        $classes = [
+            'set' => 'Akeeba\\Component\\AdminTools\\Administrator\\CliCommand\\HtaccessMakerSet',
+            'make' => 'Akeeba\\Component\\AdminTools\\Administrator\\CliCommand\\HtaccessMakerMake',
         ];
+        $class = $classes[$operation];
+        $command = new $class();
+        $command->setMVCFactory($factory);
+        $input = new ArrayInput($options);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+        $exitCode = $command->execute($input, $output);
 
-        $process = proc_open($command, $descriptorSpec, $pipes, JPATH_ROOT);
-
-        if (!\is_resource($process)) {
-            throw new \RuntimeException('Could not start the Admin Tools CLI process.');
+        if ($exitCode !== 0) {
+            throw new \RuntimeException('Admin Tools .htaccess ' . $operation . ' failed (exit ' . $exitCode . ').');
         }
-
-        fclose($pipes[0]);
-        $stdout = stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
-        $exitCode = proc_close($process);
-
-        $result = [
-            'stdout' => (string) $stdout,
-            'stderr' => (string) $stderr,
-            'exit_code' => (int) $exitCode,
-        ];
-
-        if ($exitCode !== 0 && !$allowFailure) {
-            $message = trim($result['stderr']) !== '' ? trim($result['stderr']) : 'Admin Tools CLI command failed.';
-            throw new \RuntimeException($message);
-        }
-
-        return $result;
-    }
-
-    private static function canExecuteCommands(): bool
-    {
-        $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
-
-        return \function_exists('proc_open') && !\in_array('proc_open', $disabled, true);
     }
 }

@@ -80,7 +80,8 @@ final class HtaccessStatusField extends FormField
         $html[] = '<p><strong>mod_maxcache:</strong> ' . htmlspecialchars($this->buildModMaxcacheMessage($modMaxcache), ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>Apply target:</strong> ' . htmlspecialchars($adminToolsAvailable ? 'Akeeba Admin Tools custom footer + .htaccess rebuild' : 'Direct .htaccess managed block', ENT_QUOTES, 'UTF-8') . '</p>';
         $html[] = '<p><strong>.htaccess status:</strong> ' . htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') . '</p>';
-        if ($mode === 'mod_maxcache' && (int) $params['write_gzip'] === 0) {
+        if (($settings['server_snippet_mode'] ?? 'mod_maxcache') === 'mod_maxcache'
+            && (int) ($settings['write_gzip'] ?? 0) === 0) {
             $html[] = '<p><strong>Cloudflare:</strong> Proxied setups are supported. When precompressed artifacts are disabled, MAx Cache omits gzip-specific path suffixes automatically.</p>';
         }
 
