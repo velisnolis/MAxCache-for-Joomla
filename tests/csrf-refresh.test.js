@@ -14,18 +14,58 @@ const source = fs.readFileSync(
 );
 const endpoint = '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
 
-function setup({token = '', responses = []} = {}) {
+// A form double: one token placeholder unless `placeholders` says otherwise.
+function fakeForm(placeholders = 1) {
+  const inputs = Array.from({length: placeholders}, () => ({
+    name: '',
+    value: '',
+    pending: true,
+    removeAttribute(attribute) {
+      if (attribute === 'data-maxcache-form-token') {
+        this.pending = false;
+      }
+    }
+  }));
+  const form = {
+    inputs,
+    nativeSubmits: 0,
+    requestSubmits: [],
+    querySelector: () => inputs.find((input) => input.pending) || null,
+    querySelectorAll: () => inputs.filter((input) => input.pending),
+    requestSubmit(submitter) {
+      this.requestSubmits.push(submitter);
+    }
+  };
+
+  return form;
+}
+
+function setup({token = '', responses = [], forms = []} = {}) {
   const options = {'csrf.token': token};
   const sent = [];
   const fetches = [];
   const queue = [...responses];
+  const listeners = {};
+  class HTMLFormElement {
+    submit() {
+      this.nativeSubmits += 1;
+    }
+  }
+
+  forms.forEach((form) => Object.setPrototypeOf(form, HTMLFormElement.prototype));
+
   const context = {
     Promise,
     Error,
     String,
+    Array,
+    HTMLFormElement,
     document: {
       currentScript: {dataset: {maxcacheTokenEndpoint: endpoint}},
-      addEventListener() {}
+      addEventListener(type, handler) {
+        (listeners[type] = listeners[type] || []).push(handler);
+      },
+      querySelectorAll: () => forms.flatMap((form) => form.querySelectorAll())
     },
     fetch(url, init) {
       fetches.push({url, init});
@@ -53,7 +93,26 @@ function setup({token = '', responses = []} = {}) {
 
   vm.runInNewContext(source, context);
 
-  return {context, sent, fetches, options};
+  const dispatch = (type, event) => (listeners[type] || []).forEach((handler) => handler(event));
+
+  return {context, sent, fetches, options, dispatch, listeners};
+}
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+function submitEvent(form, submitter = null) {
+  return {
+    target: form,
+    submitter,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopImmediatePropagation() {
+      this.stopped = true;
+    }
+  };
 }
 
 const fresh = 'a'.repeat(32);
@@ -127,10 +186,85 @@ test('custom scripts can ask for the token', async () => {
 });
 
 test('the wrapper is applied once', async () => {
-  const {context} = setup();
+  const {context, listeners} = setup();
   const patched = context.Joomla.request;
+  const submitListeners = listeners.submit.length;
   vm.runInNewContext(source, context);
   assert.equal(context.Joomla.request, patched);
+  assert.equal(listeners.submit.length, submitListeners);
+});
+
+test('touching a cached form fetches the token and fills the placeholder', async () => {
+  const form = fakeForm(2);
+  const {dispatch, fetches, options} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('focusin', {target: {form}});
+  dispatch('keydown', {target: {form}});
+  await settle();
+  assert.equal(fetches.length, 1);
+  assert.deepEqual(form.inputs.map((input) => [input.name, input.value, input.pending]), [[fresh, '1', false], [fresh, '1', false]]);
+  assert.equal(options['csrf.token'], fresh);
+});
+
+test('a form without a placeholder never fetches a token', async () => {
+  const form = fakeForm(0);
+  const {dispatch, fetches} = setup({forms: [form]});
+  const event = submitEvent(form);
+  dispatch('focusin', {target: {form}});
+  dispatch('submit', event);
+  form.submit();
+  await settle();
+  assert.equal(fetches.length, 0);
+  assert.equal(event.prevented, false);
+  assert.equal(form.nativeSubmits, 1);
+});
+
+test('a submit before the token is held and sent again with the token', async () => {
+  const form = fakeForm();
+  const button = {name: 'send'};
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  const first = submitEvent(form, button);
+  dispatch('submit', first);
+  assert.equal(first.prevented && first.stopped, true);
+  assert.equal(form.requestSubmits.length, 0);
+  await settle();
+  assert.deepEqual(form.requestSubmits, [button]);
+  assert.equal(form.inputs[0].name, fresh);
+  const second = submitEvent(form, button);
+  dispatch('submit', second);
+  assert.equal(second.prevented, false);
+});
+
+test('form.submit() waits for the token', async () => {
+  const form = fakeForm();
+  const {fetches} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  form.submit();
+  assert.equal(form.nativeSubmits, 0);
+  await settle();
+  assert.equal(fetches.length, 1);
+  assert.equal(form.nativeSubmits, 1);
+  assert.equal(form.inputs[0].name, fresh);
+});
+
+test('a form is still sent when the token cannot be fetched', async () => {
+  const form = fakeForm();
+  const {dispatch} = setup({forms: [form], responses: [{status: 503}]});
+  const first = submitEvent(form);
+  dispatch('submit', first);
+  await settle();
+  assert.equal(form.requestSubmits.length, 1);
+  assert.equal(form.inputs[0].name, '');
+  const second = submitEvent(form);
+  dispatch('submit', second);
+  assert.equal(second.prevented, false);
+});
+
+test('pages without core.js still get form tokens', async () => {
+  const form = fakeForm();
+  const {context, dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  delete context.Joomla;
+  dispatch('pointerdown', {target: {closest: () => form}});
+  await settle();
+  assert.equal(form.inputs[0].name, fresh);
 });
 
 (async () => {

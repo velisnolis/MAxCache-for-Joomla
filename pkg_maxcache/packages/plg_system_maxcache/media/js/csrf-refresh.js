@@ -2,17 +2,37 @@
 // static file is shared by every visitor. This script fetches the visitor's own
 // token only when a request needs it. Fetching a token starts a Joomla session,
 // and the session cookie bypasses the static cache, so it never runs on load.
+//
+// With "Cache Pages with Forms" on, the hidden token input of each form is stored
+// as <input type="hidden" data-maxcache-form-token>. The token is fetched when the
+// visitor first touches such a form, and a submit that comes earlier waits for it.
 (() => {
   'use strict';
 
   const script = document.currentScript;
   const endpoint = script ? script.dataset.maxcacheTokenEndpoint || '' : '';
+  const placeholder = 'input[data-maxcache-form-token]';
   let pending = null;
+  let fetched = '';
 
   const currentToken = () => {
     const joomla = window.Joomla;
+    const option = joomla && typeof joomla.getOptions === 'function' ? joomla.getOptions('csrf.token', '') : '';
 
-    return joomla && typeof joomla.getOptions === 'function' ? joomla.getOptions('csrf.token', '') : '';
+    return option || fetched;
+  };
+
+  // Turn the stored placeholders into the input Joomla expects: name=<token>, value=1.
+  const fillForms = (token) => {
+    if (typeof document.querySelectorAll !== 'function') {
+      return;
+    }
+
+    document.querySelectorAll(placeholder).forEach((input) => {
+      input.name = token;
+      input.value = '1';
+      input.removeAttribute('data-maxcache-form-token');
+    });
   };
 
   const fetchToken = () => {
@@ -39,7 +59,13 @@
             throw new Error('MAxCache token response is invalid');
           }
 
-          window.Joomla.loadOptions({'csrf.token': token});
+          fetched = token;
+
+          if (window.Joomla && typeof window.Joomla.loadOptions === 'function') {
+            window.Joomla.loadOptions({'csrf.token': token});
+          }
+
+          fillForms(token);
 
           return token;
         })
@@ -91,4 +117,80 @@
 
   patch();
   document.addEventListener('DOMContentLoaded', patch, {once: true});
+
+  // Form handling is installed once, even if the script is included twice.
+  if (window.MAxCache.formTokens) {
+    return;
+  }
+
+  window.MAxCache.formTokens = true;
+
+  const needsToken = (form) => !!form && typeof form.querySelector === 'function' && form.querySelector(placeholder) !== null;
+
+  const formOf = (event) => {
+    const target = event.target;
+
+    if (!target) {
+      return null;
+    }
+
+    return target.form || (typeof target.closest === 'function' ? target.closest('form') : null);
+  };
+
+  // Fetch early, while the visitor is still filling the form in, so scripts that
+  // serialise the form themselves find the token already in place.
+  const warm = (event) => {
+    if (endpoint !== '' && needsToken(formOf(event))) {
+      fetchToken().catch(() => {});
+    }
+  };
+
+  ['focusin', 'pointerdown', 'keydown'].forEach((type) => {
+    document.addEventListener(type, warm, {capture: true, passive: true});
+  });
+
+  // A submit that arrives before the token: hold it, then send it again so the
+  // form's own validation and handlers run with the token present. If the token
+  // cannot be fetched the form is sent anyway and Joomla rejects it as before.
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+
+    if (endpoint === '' || !needsToken(form)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const submitter = event.submitter || null;
+    const resend = () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit(submitter);
+      } else {
+        form.submit();
+      }
+    };
+
+    fetchToken().then(resend, () => {
+      form.querySelectorAll(placeholder).forEach((input) => input.removeAttribute('data-maxcache-form-token'));
+      resend();
+    });
+  }, true);
+
+  // form.submit() fires no submit event; scripts that validate over AJAX use it.
+  if (typeof window.HTMLFormElement === 'function') {
+    const nativeSubmit = window.HTMLFormElement.prototype.submit;
+
+    window.HTMLFormElement.prototype.submit = function () {
+      if (endpoint === '' || !needsToken(this)) {
+        return nativeSubmit.call(this);
+      }
+
+      const send = () => nativeSubmit.call(this);
+
+      fetchToken().then(send, send);
+
+      return undefined;
+    };
+  }
 })();

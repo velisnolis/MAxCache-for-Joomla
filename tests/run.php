@@ -703,6 +703,22 @@ foreach (glob(__DIR__ . '/../pkg_maxcache/packages/*/language/en-GB/*.ini') as $
     }
 }
 
+// Form tokens become nameless placeholders; anything else with the token blocks storage.
+$deferToken = 'abcdefabcdefabcdefabcdefabcdefab';
+$deferred = ResponseSafety::deferFormTokens(
+    '<form><input type="hidden" name="' . $deferToken . '" value="1"><input name="q" value="1"></form>',
+    $deferCount
+);
+assertSameValue('deferFormTokens replaces the token input only',
+    '<form><input type="hidden" data-maxcache-form-token><input name="q" value="1"></form>', $deferred);
+assertSameValue('deferFormTokens counts replacements', 1, $deferCount);
+assertSameValue('deferred page no longer contains a form token', false, ResponseSafety::containsJoomlaFormToken((string) $deferred));
+assertSameValue('deferFormTokens leaves token-free pages unchanged', '<p>x</p>', ResponseSafety::deferFormTokens('<p>x</p>', $deferCount));
+assertSameValue('deferFormTokens reports no replacement', 0, $deferCount);
+assertSameValue('deferFormTokens refuses a token repeated in a script', null, ResponseSafety::deferFormTokens(
+    '<input name="' . $deferToken . '" value="1"><script>var t="' . strtoupper($deferToken) . '";</script>'
+));
+
 echo "\nHelper tests: " . $assertions . " assertions\n";
 
 if ($failures !== []) {

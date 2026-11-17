@@ -164,6 +164,7 @@ final class MaxcacheState
                 'path_mode' => (string) ($params['path_mode'] ?? 'host-sef'),
                 'vary_language' => (bool) ($params['vary_language'] ?? false),
                 'purge_strategy' => (string) ($params['purge_strategy'] ?? 'targeted'),
+                'cache_form_pages' => (bool) ($params['cache_form_pages'] ?? false),
                 'server_snippet_mode' => (string) ($params['server_snippet_mode'] ?? 'apache'),
                 'site_hosts' => $this->normalizeLines((string) ($params['site_hosts'] ?? '')),
                 'bypass_cookies' => $this->normalizeLines((string) ($params['bypass_cookies'] ?? '')),
