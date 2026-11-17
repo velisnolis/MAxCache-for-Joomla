@@ -618,11 +618,18 @@ assertSameValue('warm: removed default prefix keeps the default language at the 
 ]));
 
 assertSameValue('warm: index.php entry point, suffix and subdirectory', [
-    'https://www.example.org/sub/index.php/',
+    'https://www.example.org/sub/',
     'https://www.example.org/sub/index.php/serveis.html',
 ], $warmUrls(
     ['base_url' => 'https://www.example.org/sub/', 'sef_rewrite' => 0, 'sef_suffix' => 1],
     \array_slice($warmItems, 0, 3)
+));
+
+assertSameValue('warm: language home without rewriting has no trailing slash', [
+    'https://www.example.org/index.php/ca',
+], $warmUrls(
+    ['sef_rewrite' => 0, 'language_filter' => 1, 'languages' => ['ca-ES' => 'ca'], 'default_language' => 'ca-ES'],
+    \array_slice($warmItems, 0, 1)
 ));
 
 assertSameValue('warm: base URL needs http(s) and a host', null, WarmPlanner::parseBaseUrl('www.example.org'));
