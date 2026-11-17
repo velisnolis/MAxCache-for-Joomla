@@ -3,14 +3,14 @@
 Release notes for MAxCache for Joomla, newest first. Each version is published as a
 GitHub release with the installable ZIP.
 
-## Unreleased
+## 0.1.43
 
 - `maxcache:warm` requests the published top-level menu items as a guest so their
   pages are stored again after a purge. See [Warm-up](README.md#warm-up).
 - New option **Cache Pages with Forms**, off by default. When on, pages with a
   Joomla form token are stored without it and the browser fetches the visitor's
-  own token on first interaction. See [Pages with Forms](README.md#pages-with-forms)
-  for the cases where it must stay off.
+  own token when the form is sent. See [Pages with Forms](README.md#pages-with-forms)
+  for what was tested and the cases where it must stay off.
 - Pagecache plugins are asked again after the page is rendered. RSForm! Pro's
   exclusion listener only answers once a form has been displayed, so it never
   reached MAxCache, and a form page was stored when RSForm's CSRF option was off.
@@ -20,6 +20,11 @@ GitHub release with the installable ZIP.
   have.
 - Catalan (`ca-ES`) and Spanish (`es-ES`) translations of the settings form and
   extension names. Status panels and administrator messages remain in English.
+
+No change to the generated server snippet or the cache layout: updating from 0.1.42
+needs no snippet reapply or purge. With the new option off, pages with forms are
+handled as before. A site that had turned RSForm's CSRF option off will stop
+storing its form pages.
 
 ## 0.1.42
 
