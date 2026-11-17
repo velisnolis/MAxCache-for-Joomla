@@ -14,31 +14,22 @@ const source = fs.readFileSync(
 );
 const endpoint = '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
 
-// A form double: one token placeholder unless `placeholders` says otherwise.
+// A form double with `placeholders` stored token inputs.
 function fakeForm(placeholders = 1, action = '/contact', method = 'POST') {
-  const inputs = Array.from({length: placeholders}, () => ({
-    name: '',
-    value: '',
-    pending: true,
-    removeAttribute(attribute) {
-      if (attribute === 'data-maxcache-form-token') {
-        this.pending = false;
-      }
-    }
-  }));
+  const inputs = Array.from({length: placeholders}, () => ({name: '', value: ''}));
+  const attributes = {action, method};
   const form = {
     inputs,
-    getAttribute: (name) => ({action, method}[name] ?? null),
+    attributes,
+    getAttribute: (name) => attributes[name] ?? null,
     nativeSubmits: 0,
     requestSubmits: [],
-    querySelector: () => inputs.find((input) => input.pending) || null,
-    querySelectorAll: () => inputs.filter((input) => input.pending),
-    requestSubmit(submitter) {
-      this.requestSubmits.push(submitter);
+    requestSubmit(...parameters) {
+      this.requestSubmits.push(parameters);
 
       // A browser dispatches the submit event inside requestSubmit().
       if (this.onRequestSubmit) {
-        this.onRequestSubmit(submitter);
+        this.onRequestSubmit(...parameters);
       }
     }
   };
@@ -56,7 +47,6 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
   const fetches = [];
   const queue = [...responses];
   const listeners = {};
-  const timers = [];
   class HTMLFormElement {
     submit() {
       this.nativeSubmits += 1;
@@ -72,9 +62,7 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
     Array,
     URL,
     WeakSet,
-    setTimeout(callback, delay) {
-      timers.push({callback, delay});
-    },
+
     location: {href: 'https://www.example.org/contact', origin: 'https://www.example.org'},
     HTMLFormElement,
     document: {
@@ -85,7 +73,7 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
       baseURI,
       querySelectorAll: (selector) => (selector.includes('formaction')
         ? controls
-        : forms.flatMap((form) => form.querySelectorAll()))
+        : forms.flatMap((form) => form.inputs))
     },
     fetch(url, init) {
       fetches.push({url, init});
@@ -113,16 +101,9 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
 
   vm.runInNewContext(source, context);
 
-  // Interaction events schedule the token fetch; run what they scheduled.
-  const dispatch = (type, event) => {
-    (listeners[type] || []).forEach((handler) => handler(event));
+  const dispatch = (type, event) => (listeners[type] || []).forEach((handler) => handler(event));
 
-    if (type !== 'submit') {
-      timers.splice(0).forEach((timer) => timer.callback());
-    }
-  };
-
-  return {context, sent, fetches, options, dispatch, listeners, timers};
+  return {context, sent, fetches, options, dispatch, listeners};
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -221,35 +202,33 @@ test('the wrapper is applied once', async () => {
   assert.equal(listeners.submit.length, submitListeners);
 });
 
-test('touching a cached form fetches the token and fills the placeholder', async () => {
-  const form = fakeForm(2);
-  const {dispatch, fetches, options} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
-  dispatch('focusin', {target: {form}});
-  dispatch('keydown', {target: {form}});
-  await settle();
-  assert.equal(fetches.length, 1);
-  assert.deepEqual(form.inputs.map((input) => [input.name, input.value, input.pending]), [[fresh, '1', false], [fresh, '1', false]]);
-  assert.equal(options['csrf.token'], fresh);
+const control = (form, attributes) => ({
+  form,
+  getAttribute: (name) => attributes[name] ?? null
 });
 
-test('the early fetch is delayed and scheduled once', async () => {
+// What a browser does inside requestSubmit(): dispatch submit, then build the data.
+const browserResubmit = (form, dispatch, log) => {
+  form.onRequestSubmit = (submitter) => {
+    const event = submitEvent(form, submitter);
+    dispatch('submit', event);
+    log.push({prevented: event.prevented, token: form.inputs.map((input) => input.name).join(',')});
+  };
+};
+
+test('nothing is fetched until a form is sent', async () => {
   const form = fakeForm();
-  const {listeners, timers, fetches} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
-  listeners.focusin.forEach((handler) => handler({target: {form}}));
-  listeners.keydown.forEach((handler) => handler({target: {form}}));
-  assert.equal(fetches.length, 0);
-  assert.deepEqual(timers.map((timer) => timer.delay), [1500]);
-  timers[0].callback();
+  const {listeners, fetches} = setup({forms: [form]});
+  assert.deepEqual(Object.keys(listeners).sort(), ['DOMContentLoaded', 'formdata', 'submit']);
   await settle();
-  assert.equal(fetches.length, 1);
-  assert.equal(form.inputs[0].name, fresh);
+  assert.equal(fetches.length, 0);
+  assert.equal(form.inputs[0].name, '');
 });
 
-test('a form without a placeholder never fetches a token', async () => {
+test('a form without a stored token input is left alone', async () => {
   const form = fakeForm(0);
   const {dispatch, fetches} = setup({forms: [form]});
   const event = submitEvent(form);
-  dispatch('focusin', {target: {form}});
   dispatch('submit', event);
   form.submit();
   await settle();
@@ -258,51 +237,80 @@ test('a form without a placeholder never fetches a token', async () => {
   assert.equal(form.nativeSubmits, 1);
 });
 
-test('a submit is held and sent again with the token', async () => {
-  const form = fakeForm();
-  const button = {name: 'send'};
-  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+test('a submit is held and sent again with the token and its submitter', async () => {
+  const form = fakeForm(2);
+  const button = {name: 'send', form};
+  const {dispatch, fetches} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
   const resent = [];
-  form.onRequestSubmit = (submitter) => {
-    const event = submitEvent(form, submitter);
-    dispatch('submit', event);
-    resent.push([event.prevented, form.inputs[0].name]);
-  };
+  browserResubmit(form, dispatch, resent);
   const first = submitEvent(form, button);
   dispatch('submit', first);
   assert.equal(first.prevented && first.stopped, true);
   assert.equal(form.requestSubmits.length, 0);
   await settle();
-  assert.deepEqual(form.requestSubmits, [button]);
-  assert.deepEqual(resent, [[false, fresh]]);
+  assert.equal(fetches.length, 1);
+  assert.deepEqual(form.requestSubmits, [[button]]);
+  assert.deepEqual(resent, [{prevented: false, token: `${fresh},${fresh}`}]);
+  assert.deepEqual(form.inputs.map((input) => input.value), ['1', '1']);
 });
 
-test('the token is fetched again at submit and replaces a stale one', async () => {
+test('each submission fetches the token of the current session', async () => {
   const form = fakeForm();
   const current = 'c'.repeat(32);
-  const {dispatch, fetches, options} = setup({
+  const {dispatch, fetches} = setup({
     forms: [form],
     responses: [{status: 200, body: {token: fresh}}, {status: 200, body: {token: current}}]
   });
-  dispatch('focusin', {target: {form}});
-  await settle();
-  assert.equal(form.inputs[0].name, fresh);
   const resent = [];
-  form.onRequestSubmit = () => {
-    const event = submitEvent(form);
-    dispatch('submit', event);
-    resent.push([event.prevented, form.inputs[0].name]);
-  };
-  const first = submitEvent(form);
-  dispatch('submit', first);
-  assert.equal(first.prevented, true);
+  browserResubmit(form, dispatch, resent);
+  dispatch('submit', submitEvent(form));
+  await settle();
+  const again = submitEvent(form);
+  dispatch('submit', again);
+  assert.equal(again.prevented, true);
   await settle();
   assert.equal(fetches.length, 2);
-  assert.deepEqual(resent, [[false, current]]);
-  assert.equal(options['csrf.token'], current);
-  const later = submitEvent(form);
-  dispatch('submit', later);
-  assert.equal(later.prevented, true);
+  assert.deepEqual(resent.map((entry) => entry.token), [fresh, current]);
+});
+
+test('a second attempt while the token is on its way is not sent twice', async () => {
+  const form = fakeForm();
+  const {dispatch, fetches} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  const first = submitEvent(form);
+  const second = submitEvent(form);
+  dispatch('submit', first);
+  dispatch('submit', second);
+  form.submit();
+  assert.equal(second.prevented, true);
+  await settle();
+  assert.equal(fetches.length, 1);
+  assert.equal(form.requestSubmits.length, 1);
+  assert.equal(form.nativeSubmits, 0);
+});
+
+test('a submitter removed from the form does not block the submission', async () => {
+  // Joomla.submitform() clicks a temporary button and removes it immediately.
+  const form = fakeForm();
+  const gone = {form: null, getAttribute: () => null};
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('submit', submitEvent(form, gone));
+  await settle();
+  assert.deepEqual(form.requestSubmits, [[]]);
+  assert.equal(form.inputs[0].name, fresh);
+});
+
+test('a failing requestSubmit falls back to submit and does not stay confirmed', async () => {
+  const form = fakeForm();
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}, {status: 200, body: {token: fresh}}]});
+  form.requestSubmit = () => {
+    throw new Error('not owned by this form');
+  };
+  dispatch('submit', submitEvent(form));
+  await settle();
+  assert.equal(form.nativeSubmits, 1);
+  const next = submitEvent(form);
+  dispatch('submit', next);
+  assert.equal(next.prevented, true);
 });
 
 test('form.submit() waits for the token', async () => {
@@ -316,127 +324,131 @@ test('form.submit() waits for the token', async () => {
   assert.equal(form.inputs[0].name, fresh);
 });
 
-test('a form is still sent when the token cannot be fetched', async () => {
+test('a failed fetch sends the form without a token and the next attempt retries', async () => {
   const form = fakeForm();
-  const {dispatch} = setup({forms: [form], responses: [{status: 503}]});
+  const {dispatch, fetches} = setup({forms: [form], responses: [{status: 503}, {status: 200, body: {token: fresh}}]});
   const resent = [];
-  form.onRequestSubmit = () => {
-    const event = submitEvent(form);
-    dispatch('submit', event);
-    resent.push(event.prevented);
-  };
+  browserResubmit(form, dispatch, resent);
   dispatch('submit', submitEvent(form));
   await settle();
-  assert.equal(form.requestSubmits.length, 1);
-  assert.deepEqual(resent, [false]);
-  assert.equal(form.inputs[0].name, '');
-});
-
-test('a form that posts to another site never receives the token', async () => {
-  const local = fakeForm(1, '');
-  const external = fakeForm(1, 'https://evil.example/collect');
-  const schemeless = fakeForm(1, '//evil.example/collect');
-  const {dispatch, fetches} = setup({forms: [local, external, schemeless], responses: [{status: 200, body: {token: fresh}}]});
-  dispatch('focusin', {target: {form: external}});
-  const event = submitEvent(external);
-  dispatch('submit', event);
-  external.submit();
+  assert.deepEqual(resent, [{prevented: false, token: ''}]);
+  const retry = submitEvent(form);
+  dispatch('submit', retry);
+  assert.equal(retry.prevented, true);
   await settle();
-  assert.equal(fetches.length, 0);
-  assert.equal(event.prevented, false);
-  assert.equal(external.nativeSubmits, 1);
-  dispatch('focusin', {target: {form: local}});
-  await settle();
-  assert.equal(local.inputs[0].name, fresh);
-  assert.deepEqual([external.inputs[0].name, schemeless.inputs[0].name], ['', '']);
-  assert.deepEqual([external.inputs[0].pending, schemeless.inputs[0].pending], [true, true]);
+  assert.equal(fetches.length, 2);
+  assert.equal(resent[1].token, fresh);
 });
 
-const control = (form, attributes) => ({
-  form,
-  getAttribute: (name) => attributes[name] ?? null
-});
+test('forms that do not POST to this site never trigger a fetch or get a token', async () => {
+  const cases = [
+    {form: fakeForm(1, 'https://evil.example/collect')},
+    {form: fakeForm(1, '//evil.example/collect')},
+    {form: fakeForm(1, '/search', 'get')},
+    {form: fakeForm(1, '/contact', ' post')},
+    {form: fakeForm(1, 'contact'), baseURI: 'https://evil.example/'},
+    {form: fakeForm(), controls: (form) => [control(form, {formaction: 'https://evil.example/x'})]},
+    {form: fakeForm(), controls: (form) => [control(form, {formmethod: 'get'})]}
+  ];
 
-test('a button that redirects or downgrades the submission blocks the token', async () => {
-  for (const attributes of [{formaction: 'https://evil.example/x'}, {formmethod: 'get'}]) {
-    const form = fakeForm();
-    const {dispatch, fetches} = setup({forms: [form], controls: [control(form, attributes)]});
-    dispatch('focusin', {target: {form}});
+  for (const {form, baseURI, controls} of cases) {
+    const options = {forms: [form], controls: controls ? controls(form) : []};
+
+    if (baseURI) {
+      options.baseURI = baseURI;
+    }
+
+    const {dispatch, fetches} = setup(options);
+    const event = submitEvent(form);
+    dispatch('submit', event);
+    form.submit();
     await settle();
     assert.equal(fetches.length, 0);
+    assert.equal(event.prevented, false);
+    assert.equal(form.nativeSubmits, 1);
     assert.equal(form.inputs[0].name, '');
   }
+});
 
-  const safe = fakeForm();
+test('a same-site formaction on another form does not block this one', async () => {
+  const form = fakeForm();
   const other = fakeForm();
   const {dispatch} = setup({
-    forms: [safe, other],
-    controls: [control(safe, {formaction: '/contact?step=2', formmethod: 'POST'}), control(other, {formaction: 'https://evil.example/x'})],
+    forms: [form, other],
+    controls: [control(form, {formaction: '/contact?step=2', formmethod: 'POST'}), control(other, {formaction: 'https://evil.example/x'})],
     responses: [{status: 200, body: {token: fresh}}]
   });
-  dispatch('focusin', {target: {form: safe}});
+  dispatch('submit', submitEvent(form));
   await settle();
-  assert.equal(safe.inputs[0].name, fresh);
+  assert.equal(form.inputs[0].name, fresh);
   assert.equal(other.inputs[0].name, '');
 });
 
-test('GET forms and an injected cross-origin base never receive the token', async () => {
-  const getForm = fakeForm(1, '/search', 'get');
-  const first = setup({forms: [getForm]});
-  first.dispatch('focusin', {target: {form: getForm}});
-  await settle();
-  assert.equal(first.fetches.length, 0);
-
-  const form = fakeForm(1, 'contact');
-  const second = setup({forms: [form], baseURI: 'https://evil.example/'});
-  second.dispatch('focusin', {target: {form}});
-  await settle();
-  assert.equal(second.fetches.length, 0);
-  assert.equal(form.inputs[0].name, '');
-});
-
-test('an unreadable document or a padded method is treated as unsafe', async () => {
+test('an unreadable document or form is treated as unsafe', async () => {
   const form = fakeForm();
-  const first = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  const first = setup({forms: [form]});
   first.context.document.querySelectorAll = {shadowed: true};
-  first.dispatch('focusin', {target: {form}});
+  first.dispatch('submit', submitEvent(form));
   await settle();
   assert.equal(first.fetches.length, 0);
-  assert.equal(form.inputs[0].name, '');
-
-  const padded = fakeForm(1, '/contact', ' post');
-  const second = setup({forms: [padded]});
-  second.dispatch('focusin', {target: {form: padded}});
-  await settle();
-  assert.equal(second.fetches.length, 0);
 
   const shadowed = fakeForm();
   shadowed.getAttribute = {shadowed: true};
-  const third = setup({forms: [shadowed]});
-  third.dispatch('focusin', {target: {form: shadowed}});
+  const second = setup({forms: [shadowed]});
+  second.dispatch('submit', submitEvent(shadowed));
   await settle();
-  assert.equal(third.fetches.length, 0);
+  assert.equal(second.fetches.length, 0);
+  assert.equal(shadowed.inputs[0].name, '');
 });
 
-test('a token is withdrawn if the form becomes unsafe before it is sent', async () => {
+test('a target changed while the token was on its way gets no token', async () => {
+  const viaEvent = fakeForm();
+  const viaSubmit = fakeForm();
+  const {dispatch} = setup({forms: [viaEvent, viaSubmit], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('submit', submitEvent(viaEvent));
+  viaSubmit.submit();
+  viaEvent.attributes.action = 'https://evil.example/collect';
+  viaSubmit.attributes.action = 'https://evil.example/collect';
+  await settle();
+  assert.equal(viaEvent.requestSubmits.length, 1);
+  assert.equal(viaSubmit.nativeSubmits, 1);
+  assert.deepEqual([viaEvent.inputs[0].name, viaSubmit.inputs[0].name], ['', '']);
+});
+
+test('a target changed by a later handler has the token removed from the data', async () => {
   const form = fakeForm();
-  const controls = [];
-  const {dispatch} = setup({forms: [form], controls, responses: [{status: 200, body: {token: fresh}}]});
-  dispatch('focusin', {target: {form}});
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('submit', submitEvent(form));
   await settle();
   assert.equal(form.inputs[0].name, fresh);
-  controls.push(control(form, {formaction: 'https://evil.example/x'}));
-  const event = submitEvent(form, controls[0]);
-  dispatch('submit', event);
-  assert.deepEqual([form.inputs[0].name, form.inputs[0].value], ['', '']);
-  assert.equal(event.prevented, false);
+  form.attributes.method = 'get';
+  const deleted = [];
+  dispatch('formdata', {target: form, formData: {delete: (name) => deleted.push(name)}});
+  assert.deepEqual(deleted, [fresh]);
+  assert.equal(form.inputs[0].name, '');
+
+  const untouched = [];
+  const safe = fakeForm();
+  const next = setup({forms: [safe]});
+  next.dispatch('formdata', {target: safe, formData: {delete: (name) => untouched.push(name)}});
+  assert.deepEqual(untouched, []);
+});
+
+test('a token input outside its form is filled through its form owner', async () => {
+  const form = fakeForm(0);
+  const outside = {name: '', value: '', form};
+  form.inputs.push(outside);
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('submit', submitEvent(form));
+  await settle();
+  assert.equal(outside.name, fresh);
 });
 
 test('pages without core.js still get form tokens', async () => {
   const form = fakeForm();
   const {context, dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
   delete context.Joomla;
-  dispatch('pointerdown', {target: {closest: () => form}});
+  dispatch('submit', submitEvent(form));
   await settle();
   assert.equal(form.inputs[0].name, fresh);
 });

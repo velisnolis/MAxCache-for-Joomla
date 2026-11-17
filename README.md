@@ -161,20 +161,22 @@ form that prints `form.token`: those pages are rendered by Joomla on every visit
 1. The stored copy has each token input replaced by
    `<input type="hidden" data-maxcache-form-token>`. The visitor who triggered the
    render still gets their real token.
-2. About 1.5 s after a visitor first focuses, clicks or types in such a form, the
-   browser asks `com_ajax` for their own token and fills the input. This starts
-   their Joomla session, so from then on their requests bypass the static cache.
-3. Every submit is held while the token is fetched again, then sent through
-   `requestSubmit()` so the form's own validation runs. `form.submit()` waits too.
-   The second fetch matters: a new visitor has no session, and two first requests
-   sent at the same moment each start one, of which only the last cookie survives.
-   The delay in step 2 keeps the token request from overlapping a captcha that
-   fetches its challenge on focus and stores it in the session.
-4. If the token is also used outside its input (a link, an inline script), the page
-   is not stored.
+2. Nothing is fetched while the visitor fills the form in. When they send it, the
+   submit is held, the browser asks `com_ajax` for their own token, writes it into
+   that form, and sends the form again through `requestSubmit()` so its own
+   validation and handlers run. `form.submit()` waits the same way. Asking for the
+   token starts their Joomla session, so from then on their requests bypass the
+   static cache.
+3. The token is fetched at submit and not earlier because a new visitor has no
+   session: two first requests sent at the same moment each start one, and only the
+   last cookie survives. A captcha that fetches its challenge on focus and keeps it
+   in the session has set the cookie by the time the form is sent.
+4. If the token is also used outside its input (a link, an inline script, a second
+   field), raw or entity-encoded, the page is not stored.
 5. The token is only written into `POST` forms that submit to the same site,
-   including through any button's `formaction`; it is withdrawn if that changes
-   before the form is sent.
+   including through any button's `formaction`. This is checked when the submit
+   starts, again after the token arrives, and once more when the browser builds the
+   form data; a form that changed target in between is sent without the token.
 
 Requirements and limits:
 
@@ -186,8 +188,9 @@ Requirements and limits:
     or one-time code
   - fields prefilled from the visitor, the session or the request
   - a server-generated captcha whose challenge is embedded in the HTML
-- A script that serialises the form itself and sends it over AJAX gets the token
-  only if the visitor touched the form first, which is the usual case.
+- A script that serialises the form itself and sends it over AJAX, without a
+  submit event or `form.submit()`, sends no token. It can ask for one with
+  `MAxCache.csrfToken()`.
 - A form extension with its own `pagecache` exclusion keeps excluding its pages.
   For RSForm! Pro, disable the `Page Cache - RSForm! Pro` plugin.
 - Purge after changing the setting, and test every form on the site.
@@ -205,10 +208,10 @@ Tested on Joomla 6.2 in a real browser, loading the stored page:
 | Core contact form (`com_contact`) on a menu item | token accepted |
 
 Joomla's proof-of-work captcha fetches its challenge when the form is focused and
-keeps it in the session. Before the delay in step 2 existed it failed about one run
-in five, when its request and the token request each started a session. A script
-that sends its own first request around 1.5 s after the first interaction could
-still collide.
+keeps it in the session. An earlier design fetched the token on first interaction
+too, and the two requests each started a session: about one submission in five
+failed. Fetching only at submit removes that overlap. A script that sends its first
+same-site request at the very moment of submit could still collide.
 
 Other things to know:
 

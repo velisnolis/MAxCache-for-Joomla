@@ -4,12 +4,11 @@
 // and the session cookie bypasses the static cache, so it never runs on load.
 //
 // With "Cache Pages with Forms" on, the hidden token input of each form is stored
-// as <input type="hidden" data-maxcache-form-token>. A new visitor has no session
-// yet, and two first requests sent at once each start their own: only the last
-// cookie survives. A captcha that fetches its challenge when the form is focused and
-// keeps it in the session would lose it if this script's request overlapped. So the
-// token is fetched a moment after the visitor first touches the form, once such
-// requests have set the cookie, and again when the form is sent.
+// as <input type="hidden" data-maxcache-form-token>. The token is fetched when the
+// form is sent, never earlier: a new visitor has no session, and two first requests
+// sent at once each start their own, of which only the last cookie survives. A
+// captcha that fetches its challenge on focus and keeps it in the session has set
+// the cookie by the time the form is sent, so the token request joins that session.
 (() => {
   'use strict';
 
@@ -105,43 +104,27 @@
     }
   };
 
-  const filled = [];
+  // The inputs MAxCache stored without a token and that belong to this form,
+  // including ones outside it that point to it with a form="" attribute. The marker
+  // attribute stays for the life of the page.
+  const tokenInputs = (form) => {
+    const all = form ? queryAll(placeholder) : null;
 
-  // Take the token back out of a form that stopped being safe after it was filled,
-  // for example because a button with an external formaction was added later.
-  const withdrawFrom = (form) => {
-    filled.forEach((input) => {
-      if (input.form === form) {
-        input.name = '';
-        input.value = '';
-      }
+    return all === null ? [] : Array.prototype.filter.call(all, (input) => input.form === form);
+  };
+
+  const fill = (form, token) => {
+    tokenInputs(form).forEach((input) => {
+      input.name = token;
+      input.value = '1';
     });
   };
 
-  // Turn the stored placeholders into the input Joomla expects: name=<token>, value=1.
-  const fillForms = (token) => {
-    const inputs = queryAll(placeholder);
-
-    if (inputs === null) {
-      return;
-    }
-
-    inputs.forEach((input) => {
-      if (!postsToThisSite(input.form)) {
-        return;
-      }
-
-      input.name = token;
-      input.value = '1';
-      input.removeAttribute('data-maxcache-form-token');
-      filled.push(input);
-    });
-
-    // Inputs filled from an earlier fetch follow the current session's token.
-    filled.forEach((input) => {
-      if (input.name !== '') {
-        input.name = token;
-      }
+  // Take the token back out of a form that is not, or is no longer, safe to send.
+  const clear = (form) => {
+    tokenInputs(form).forEach((input) => {
+      input.name = '';
+      input.value = '';
     });
   };
 
@@ -175,8 +158,6 @@
             window.Joomla.loadOptions({'csrf.token': token});
           }
 
-          fillForms(token);
-
           return token;
         })
         .catch((error) => {
@@ -194,7 +175,7 @@
   };
 
   // The token of the session the visitor has right now. Waits for a fetch that is
-  // still under way, since that one may belong to a session that lost the race.
+  // still under way, since that one may belong to a session that lost a race.
   let refreshing = null;
 
   const refreshToken = () => {
@@ -262,61 +243,75 @@
 
   window.MAxCache.formTokens = true;
 
-  // A form this script is responsible for: it still has a placeholder, or it holds
-  // a token this script put there.
-  const needsToken = (form) => !!form && typeof form.querySelector === 'function'
-    && (form.querySelector(placeholder) !== null || filled.some((input) => input.form === form && input.name !== ''))
-    && postsToThisSite(form);
-
+  const formPrototype = typeof window.HTMLFormElement === 'function' ? window.HTMLFormElement.prototype : null;
+  const nativeSubmit = formPrototype ? formPrototype.submit : null;
+  const holding = new WeakSet();
   const confirmed = new WeakSet();
 
-  const formOf = (event) => {
-    const target = event.target;
+  // Prototype methods again: a control named "submit" or "requestSubmit" shadows
+  // the form's own.
+  const submitNow = (form) => (nativeSubmit ? nativeSubmit.call(form) : form.submit());
 
-    if (!target) {
-      return null;
-    }
+  const requestSubmit = (form, submitter) => {
+    const native = formPrototype && formPrototype.requestSubmit;
+    const call = (...parameters) => (typeof native === 'function'
+      ? native.apply(form, parameters)
+      : form.requestSubmit(...parameters));
 
-    return target.form || (typeof target.closest === 'function' ? target.closest('form') : null);
-  };
+    // Joomla.submitform() clicks a temporary button and removes it at once, so the
+    // original submitter may be gone by now. Send without it, keeping its request to
+    // skip validation.
+    if (submitter && submitter.form === form) {
+      call(submitter);
 
-  // Fetch while the visitor is still filling the form in, so scripts that serialise
-  // the form themselves find the token in place, but not in the same instant as
-  // requests other scripts send on focus.
-  const warmDelay = 1500;
-  let warming = false;
-
-  const warm = (event) => {
-    if (warming || endpoint === '' || !needsToken(formOf(event))) {
       return;
     }
 
-    warming = true;
-    window.setTimeout(() => {
-      fetchToken().catch(() => {
-        warming = false;
-      });
-    }, warmDelay);
+    const skipValidation = !!submitter && attribute(submitter, 'formnovalidate') !== null
+      && attribute(form, 'novalidate') === null;
+
+    const elementPrototype = window.Element && window.Element.prototype;
+
+    if (skipValidation && elementPrototype) {
+      elementPrototype.setAttribute.call(form, 'novalidate', '');
+    }
+
+    try {
+      call();
+    } finally {
+      if (skipValidation && elementPrototype) {
+        elementPrototype.removeAttribute.call(form, 'novalidate');
+      }
+    }
   };
 
-  ['focusin', 'pointerdown', 'keydown'].forEach((type) => {
-    document.addEventListener(type, warm, {capture: true, passive: true});
-  });
+  // Put the visitor's token in, or take it out if the form no longer posts here.
+  const prepare = (form, token) => {
+    if (!postsToThisSite(form)) {
+      clear(form);
+    } else if (token !== '') {
+      fill(form, token);
+    }
+  };
 
   // Every submit of such a form is held while the token of the visitor's current
   // session is fetched, then sent again so the form's own validation and handlers
-  // run with it in place. If the token cannot be fetched the form is sent anyway
-  // and Joomla rejects it as before.
+  // run with it in place. If the token cannot be fetched the form is sent without
+  // one and Joomla rejects it; the next attempt fetches again.
   document.addEventListener('submit', (event) => {
     const form = event.target;
 
+    if (tokenInputs(form).length === 0) {
+      return;
+    }
+
     if (!postsToThisSite(form)) {
-      withdrawFrom(form);
+      clear(form);
 
       return;
     }
 
-    if (endpoint === '' || !needsToken(form)) {
+    if (endpoint === '') {
       return;
     }
 
@@ -329,45 +324,76 @@
     event.preventDefault();
     event.stopImmediatePropagation();
 
+    // A second click while the token is on its way is the same submission.
+    if (holding.has(form)) {
+      return;
+    }
+
+    holding.add(form);
+
     const submitter = event.submitter || null;
-    const resend = () => {
+    const resend = (token) => {
+      holding.delete(form);
+      prepare(form, token);
       confirmed.add(form);
 
-      if (typeof form.requestSubmit === 'function') {
-        form.requestSubmit(submitter);
-      } else {
-        form.submit();
+      try {
+        requestSubmit(form, submitter);
+      } catch (error) {
+        submitNow(form);
+      } finally {
+        // requestSubmit() dispatches its submit event synchronously. If the
+        // browser's own validation stopped it, the next attempt is checked again.
+        confirmed.delete(form);
       }
-
-      // requestSubmit() dispatches its submit event synchronously. If the browser's
-      // own validation stopped it, the next attempt must be checked again.
-      confirmed.delete(form);
     };
 
-    refreshToken().then(resend, () => {
-      form.querySelectorAll(placeholder).forEach((input) => input.removeAttribute('data-maxcache-form-token'));
-      resend();
+    refreshToken().then(resend, () => resend(''));
+  }, true);
+
+  // The last moment before the data leaves: handlers that ran after the check above
+  // may have pointed the form somewhere else or switched it to GET.
+  document.addEventListener('formdata', (event) => {
+    const form = event.target;
+
+    if (postsToThisSite(form)) {
+      return;
+    }
+
+    tokenInputs(form).forEach((input) => {
+      if (input.name !== '' && event.formData && typeof event.formData.delete === 'function') {
+        event.formData.delete(input.name);
+      }
     });
+    clear(form);
   }, true);
 
   // form.submit() fires no submit event; scripts that validate over AJAX use it.
-  if (typeof window.HTMLFormElement === 'function') {
-    const nativeSubmit = window.HTMLFormElement.prototype.submit;
+  if (formPrototype) {
+    formPrototype.submit = function () {
+      if (endpoint === '' || confirmed.has(this) || tokenInputs(this).length === 0) {
+        return nativeSubmit.call(this);
+      }
 
-    window.HTMLFormElement.prototype.submit = function () {
       if (!postsToThisSite(this)) {
-        withdrawFrom(this);
+        clear(this);
 
         return nativeSubmit.call(this);
       }
 
-      if (endpoint === '' || !needsToken(this) || confirmed.has(this)) {
-        return nativeSubmit.call(this);
+      if (holding.has(this)) {
+        return undefined;
       }
 
-      const send = () => nativeSubmit.call(this);
+      holding.add(this);
 
-      refreshToken().then(send, send);
+      const send = (token) => {
+        holding.delete(this);
+        prepare(this, token);
+        nativeSubmit.call(this);
+      };
+
+      refreshToken().then(send, () => send(''));
 
       return undefined;
     };

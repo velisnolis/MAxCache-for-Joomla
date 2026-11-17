@@ -60,11 +60,13 @@ final class ResponseSafety
 
     /**
      * Replaces every Joomla form-token input with a nameless placeholder that the
-     * browser fills with the visitor's own token before the form is sent.
+     * browser fills with the visitor's own token when the form is sent.
      *
-     * Returns null when a replaced token still appears elsewhere in the document,
-     * for example in a link or an inline script: that copy cannot be isolated, so
-     * the page must not be stored.
+     * Only the input Joomla prints is replaced: type="hidden", a 32-character hex
+     * name and value "1", read from the real attributes. A form="" association is
+     * kept. Returns null when a replaced token still appears elsewhere in the
+     * document, raw or as HTML entities, for example in a link, an inline script or
+     * a second input: that copy cannot be isolated, so the page must not be stored.
      */
     public static function deferFormTokens(string $html, ?int &$count = null): ?string
     {
@@ -72,21 +74,25 @@ final class ResponseSafety
         $tokens = [];
 
         $deferred = preg_replace_callback(
-            '/<input\b[^>]*>/i',
+            '/<input\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i',
             static function (array $match) use (&$count, &$tokens): string {
-                $input = $match[0];
+                $attributes = self::parseAttributes($match[0]);
 
                 if (
-                    !preg_match('/\bname\s*=\s*(["\'])([a-f0-9]{32})\1/i', $input, $name)
-                    || !preg_match('/\bvalue\s*=\s*(["\'])1\1/i', $input)
+                    strtolower($attributes['type'] ?? '') !== 'hidden'
+                    || !preg_match('/^[a-f0-9]{32}$/i', $attributes['name'] ?? '')
+                    || ($attributes['value'] ?? '') !== '1'
                 ) {
-                    return $input;
+                    return $match[0];
                 }
 
                 ++$count;
-                $tokens[strtolower((string) $name[2])] = true;
+                $tokens[strtolower($attributes['name'])] = true;
+                $owner = isset($attributes['form']) && $attributes['form'] !== ''
+                    ? ' form="' . htmlspecialchars($attributes['form'], ENT_QUOTES, 'UTF-8') . '"'
+                    : '';
 
-                return '<input type="hidden" data-maxcache-form-token>';
+                return '<input type="hidden"' . $owner . ' data-maxcache-form-token>';
             },
             $html
         );
@@ -95,13 +101,54 @@ final class ResponseSafety
             return null;
         }
 
+        $decoded = html_entity_decode($deferred, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
         foreach (array_keys($tokens) as $token) {
-            if (stripos($deferred, (string) $token) !== false) {
+            if (stripos($deferred, (string) $token) !== false || stripos($decoded, (string) $token) !== false) {
                 return null;
             }
         }
 
         return $deferred;
+    }
+
+    /**
+     * Attributes of one start tag, names lowercased and values entity-decoded. As in
+     * a browser, the first occurrence of a repeated attribute wins.
+     *
+     * @return array<string, string>
+     */
+    private static function parseAttributes(string $tag): array
+    {
+        $attributes = [];
+        $inner = (string) preg_replace('/^<[a-z0-9]+|\/?>$/i', '', $tag);
+
+        preg_match_all(
+            '/([^\s"\'=<>\/]+)(?:\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+)))?/',
+            $inner,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            $name = strtolower($match[1]);
+
+            if (isset($attributes[$name])) {
+                continue;
+            }
+
+            $value = $match[2] ?? '';
+
+            if ($value === '' && ($match[3] ?? '') !== '') {
+                $value = $match[3];
+            } elseif ($value === '' && ($match[4] ?? '') !== '') {
+                $value = $match[4];
+            }
+
+            $attributes[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+
+        return $attributes;
     }
 
     public static function containsScriptOptionToken(string $html): bool
