@@ -161,16 +161,22 @@ form that prints `form.token`: those pages are rendered by Joomla on every visit
 1. The stored copy has each token input replaced by
    `<input type="hidden" data-maxcache-form-token>`. The visitor who triggered the
    render still gets their real token.
-2. When a visitor first focuses, clicks or types in such a form, the browser asks
-   `com_ajax` for their own token and fills the input. This starts their Joomla
-   session, so from then on their requests bypass the static cache.
-3. A submit that arrives before the token is held, then sent again through
-   `requestSubmit()` so the form's own validation runs. `form.submit()` waits too.
-4. If the token is also used outside its input (a link, an inline script), the page
-   is not stored.
+2. Nothing is fetched while the visitor fills the form in. When they send it, the
+   submit is held, the browser asks `com_ajax` for their own token, writes it into
+   that form, and sends the form again through `requestSubmit()` so its own
+   validation and handlers run. `form.submit()` waits the same way. Asking for the
+   token starts their Joomla session, so from then on their requests bypass the
+   static cache.
+3. The token is fetched at submit and not earlier because a new visitor has no
+   session: two first requests sent at the same moment each start one, and only the
+   last cookie survives. A captcha that fetches its challenge on focus and keeps it
+   in the session has set the cookie by the time the form is sent.
+4. If the token is also used outside its input (a link, an inline script, a second
+   field), raw or entity-encoded, the page is not stored.
 5. The token is only written into `POST` forms that submit to the same site,
-   including through any button's `formaction`; it is withdrawn if that changes
-   before the form is sent.
+   including through any button's `formaction`. This is checked when the submit
+   starts, again after the token arrives, and once more when the browser builds the
+   form data; a form that changed target in between is sent without the token.
 
 Requirements and limits:
 
@@ -182,8 +188,9 @@ Requirements and limits:
     or one-time code
   - fields prefilled from the visitor, the session or the request
   - a server-generated captcha whose challenge is embedded in the HTML
-- A script that serialises the form itself and sends it over AJAX gets the token
-  only if the visitor touched the form first, which is the usual case.
+- A script that serialises the form itself and sends it over AJAX, without a
+  submit event or `form.submit()`, sends no token. It can ask for one with
+  `MAxCache.csrfToken()`.
 - A form extension with its own `pagecache` exclusion keeps excluding its pages.
   For RSForm! Pro, disable the `Page Cache - RSForm! Pro` plugin.
 - Purge after changing the setting, and test every form on the site.
@@ -192,15 +199,30 @@ Tested on Joomla 6.2 in a real browser, loading the stored page:
 
 | Form | Result |
 | --- | --- |
-| RSForm! Pro 3.4.6, single-page example form | sent, thank-you page |
-| RSForm! Pro 3.4.6, multipage example form | sent, thank-you page |
+| RSForm! Pro 3.4.10, single-page and multipage example forms | sent, thank-you page |
+| RSForm! Pro form in `mod_rsform` 3.1.0 on a cached page | sent, thank-you page |
+| RSForm! Pro Cloudflare Turnstile 1.0.3 (Cloudflare test keys), as a page and in the module | sent, thank-you page |
+| RSForm! Pro Joomla! Captcha 3.1.2 with Joomla's proof-of-work captcha, as a page and in the module | sent in repeated runs; see the note below |
 | RSForm! Pro built-in captcha field | **fails**: the stored page embeds one visitor's captcha image, so a new visitor's correct answer is rejected once; the page Joomla then renders has their own captcha |
 | Core login module (`mod_login`) inside a cached page | token accepted |
 | Core contact form (`com_contact`) on a menu item | token accepted |
 
-Not tested: reCAPTCHA and hCaptcha, RSForm AJAX validation, RSForm's Hashcash field,
-file uploads, RSForm shown through its module or content plugin, and other form
-extensions.
+Joomla's proof-of-work captcha fetches its challenge when the form is focused and
+keeps it in the session. An earlier design fetched the token on first interaction
+too, and the two requests each started a session: about one submission in five
+failed. Fetching only at submit removes that overlap. A script that sends its first
+same-site request at the very moment of submit could still collide.
+
+Other things to know:
+
+- Updating RSForm! Pro re-enables its `Page Cache - RSForm! Pro` plugin, which
+  stops its form pages being stored again until the plugin is disabled.
+- A form in a module posts to the page it is on. If that page's component rejects
+  POST requests the form fails, cached or not.
+
+Not tested: reCAPTCHA (no public test keys for v3) and hCaptcha, RSForm AJAX
+validation, RSForm's Hashcash field, file uploads, RSForm through its content
+plugin, and other form extensions.
 
 ## Joomla Console Commands
 

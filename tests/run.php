@@ -715,8 +715,52 @@ assertSameValue('deferFormTokens counts replacements', 1, $deferCount);
 assertSameValue('deferred page no longer contains a form token', false, ResponseSafety::containsJoomlaFormToken((string) $deferred));
 assertSameValue('deferFormTokens leaves token-free pages unchanged', '<p>x</p>', ResponseSafety::deferFormTokens('<p>x</p>', $deferCount));
 assertSameValue('deferFormTokens reports no replacement', 0, $deferCount);
+$deferCases = [
+    'a data-name attribute is not a name' => '<input type="hidden" name="choice" data-name="' . $deferToken . '" value="1">',
+    'a token-looking title is not a name' => '<input type="hidden" name="q" title=\'name="' . $deferToken . '" value="1"\' value="1">',
+    'a checkbox is not a token input' => '<input type="checkbox" name="' . $deferToken . '" value="1">',
+    'an input without a type is not a token input' => '<input name="' . $deferToken . '" value="1">',
+];
+
+foreach ($deferCases as $label => $input) {
+    $result = ResponseSafety::deferFormTokens('<form>' . $input . '</form>', $deferCount);
+    assertSameValue('deferFormTokens: ' . $label, [0, true], [$deferCount, $result === null || $result === '<form>' . $input . '</form>']);
+}
+
+assertSameValue('deferFormTokens keeps the form association',
+    '<input type="hidden" form="contact&quot;x" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input value=1 form="contact&quot;x" name=' . $deferToken . ' type=HIDDEN>'));
+assertSameValue('deferFormTokens reads entity-encoded names', '<input type="hidden" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" name="&#97;' . substr($deferToken, 1) . '" value="1">'));
+assertSameValue('deferFormTokens refuses an entity-encoded copy elsewhere', null, ResponseSafety::deferFormTokens(
+    '<input type="hidden" name="' . $deferToken . '" value="1"><a href="/x?&#97;' . substr($deferToken, 1) . '=1">x</a>'
+));
+assertSameValue('deferFormTokens refuses a numeric reference without a semicolon', null, ResponseSafety::deferFormTokens(
+    '<input type="hidden" name="' . $deferToken . '" value="1"><a href="/x?&#97' . substr($deferToken, 1) . '=1">x</a>'
+));
+assertSameValue('deferFormTokens reads names with unterminated numeric references', '<input type="hidden" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" name="&#97' . substr($deferToken, 1) . '" value="1">'));
+$greedy = '<input type="hidden" name="&#x61' . substr($deferToken, 1) . '" value="1">';
+assertSameValue('deferFormTokens reads a hex reference to its last digit, as a browser does', $greedy,
+    ResponseSafety::deferFormTokens($greedy));
+assertSameValue('deferFormTokens keeps an empty form attribute', '<input type="hidden" form="" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens decodes a form owner once, not twice',
+    '<input type="hidden" form="&amp;copy;" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="&#38;copy;" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens still decodes named references in attributes',
+    '<input type="hidden" form="a&amp;b&quot;c" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="a&amp;b&quot;c" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens accepts a self-closing token input', '<input type="hidden" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" name="' . $deferToken . '" value="1"/>'));
+$slashValue = '<input type=hidden name=' . $deferToken . ' value=1/>';
+assertSameValue('deferFormTokens leaves an unquoted value ending in a slash', [$slashValue, 0],
+    [ResponseSafety::deferFormTokens($slashValue, $deferCount), $deferCount]);
+assertSameValue('deferFormTokens refuses a second copy it cannot replace', null, ResponseSafety::deferFormTokens(
+    '<input type="hidden" name="' . $deferToken . '" value="1"><input type="text" name="' . $deferToken . '" value="1">'
+));
 assertSameValue('deferFormTokens refuses a token repeated in a script', null, ResponseSafety::deferFormTokens(
-    '<input name="' . $deferToken . '" value="1"><script>var t="' . strtoupper($deferToken) . '";</script>'
+    '<input type="hidden" name="' . $deferToken . '" value="1"><script>var t="' . strtoupper($deferToken) . '";</script>'
 ));
 
 echo "\nHelper tests: " . $assertions . " assertions\n";
