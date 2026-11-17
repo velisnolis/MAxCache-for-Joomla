@@ -290,7 +290,6 @@ test('a form that posts to another site never receives the token', async () => {
 
 const control = (form, attributes) => ({
   form,
-  hasAttribute: (name) => name in attributes,
   getAttribute: (name) => attributes[name] ?? null
 });
 
@@ -330,6 +329,29 @@ test('GET forms and an injected cross-origin base never receive the token', asyn
   await settle();
   assert.equal(second.fetches.length, 0);
   assert.equal(form.inputs[0].name, '');
+});
+
+test('an unreadable document or a padded method is treated as unsafe', async () => {
+  const form = fakeForm();
+  const first = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  first.context.document.querySelectorAll = {shadowed: true};
+  first.dispatch('focusin', {target: {form}});
+  await settle();
+  assert.equal(first.fetches.length, 0);
+  assert.equal(form.inputs[0].name, '');
+
+  const padded = fakeForm(1, '/contact', ' post');
+  const second = setup({forms: [padded]});
+  second.dispatch('focusin', {target: {form: padded}});
+  await settle();
+  assert.equal(second.fetches.length, 0);
+
+  const shadowed = fakeForm();
+  shadowed.getAttribute = {shadowed: true};
+  const third = setup({forms: [shadowed]});
+  third.dispatch('focusin', {target: {form: shadowed}});
+  await settle();
+  assert.equal(third.fetches.length, 0);
 });
 
 test('a token is withdrawn if the form becomes unsafe before it is sent', async () => {

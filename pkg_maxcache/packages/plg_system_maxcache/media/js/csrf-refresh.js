@@ -36,36 +36,69 @@
     }
   };
 
-  const isPost = (value) => String(value || '').trim().toLowerCase() === 'post';
+  // As the browser parses it: ASCII case-insensitive, no trimming. " post" is GET.
+  const isPost = (value) => String(value || '').toLowerCase() === 'post';
+
+  // Named elements can shadow document.querySelectorAll or a form's getAttribute
+  // (<img name="querySelectorAll">). Call the prototype methods, which they cannot
+  // replace, and treat anything unreadable as unsafe.
+  const queryAll = (selector) => {
+    const native = window.Document && window.Document.prototype && window.Document.prototype.querySelectorAll;
+
+    if (typeof native === 'function') {
+      return native.call(document, selector);
+    }
+
+    return typeof document.querySelectorAll === 'function' ? document.querySelectorAll(selector) : null;
+  };
+
+  const attribute = (element, name) => {
+    const native = window.Element && window.Element.prototype && window.Element.prototype.getAttribute;
+
+    if (typeof native === 'function') {
+      return native.call(element, name);
+    }
+
+    if (typeof element.getAttribute !== 'function') {
+      throw new Error('MAxCache cannot read form attributes');
+    }
+
+    return element.getAttribute(name);
+  };
 
   const postsToThisSite = (form) => {
-    if (!form || typeof form.getAttribute !== 'function') {
+    if (!form) {
       return false;
     }
 
-    if (!isPost(form.getAttribute('method')) || !sameOrigin(form.getAttribute('action') || '')) {
+    try {
+      if (!isPost(attribute(form, 'method')) || !sameOrigin(attribute(form, 'action') || '')) {
+        return false;
+      }
+
+      const overrides = queryAll('[formaction], [formmethod]');
+
+      if (overrides === null) {
+        return false;
+      }
+
+      for (const control of overrides) {
+        if (control.form !== form) {
+          continue;
+        }
+
+        const action = attribute(control, 'formaction');
+        const method = attribute(control, 'formmethod');
+
+        if ((action !== null && !sameOrigin(action)) || (method !== null && !isPost(method))) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
       return false;
     }
-
-    const overrides = typeof document.querySelectorAll === 'function'
-      ? document.querySelectorAll('[formaction], [formmethod]')
-      : [];
-
-    for (const control of overrides) {
-      if (control.form !== form) {
-        continue;
-      }
-
-      if (control.hasAttribute('formaction') && !sameOrigin(control.getAttribute('formaction') || '')) {
-        return false;
-      }
-
-      if (control.hasAttribute('formmethod') && !isPost(control.getAttribute('formmethod'))) {
-        return false;
-      }
-    }
-
-    return true;
   };
 
   const filled = [];
@@ -83,11 +116,13 @@
 
   // Turn the stored placeholders into the input Joomla expects: name=<token>, value=1.
   const fillForms = (token) => {
-    if (typeof document.querySelectorAll !== 'function') {
+    const inputs = queryAll(placeholder);
+
+    if (inputs === null) {
       return;
     }
 
-    document.querySelectorAll(placeholder).forEach((input) => {
+    inputs.forEach((input) => {
       if (!postsToThisSite(input.form)) {
         return;
       }
