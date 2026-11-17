@@ -204,7 +204,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        if (ResponseSafety::containsJoomlaFormToken($body)) {
+        $deferFormTokens = (bool) (int) $this->params->get('cache_form_pages', 0);
+
+        if (!$deferFormTokens && ResponseSafety::containsJoomlaFormToken($body)) {
             $this->rejectResponse('csrf-token-in-response');
             return;
         }
@@ -216,10 +218,10 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
-        $artifact = $this->buildArtifactBody($body);
+        $artifact = $this->buildArtifactBody($body, $deferFormTokens, $rejection);
 
         if ($artifact === null) {
-            $this->rejectResponse('csrf-refresh-unavailable');
+            $this->rejectResponse($rejection);
             return;
         }
 
@@ -240,14 +242,27 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $this->emitDebugHeaders('stored');
     }
 
-    private function buildArtifactBody(string $body): ?string
+    private function buildArtifactBody(string $body, bool $deferFormTokens, ?string &$rejection = null): ?string
     {
         // The live response keeps the visitor's own token. A shared artifact must
         // not hand one guest session's token to every visitor: blank it and let the
         // browser fetch a fresh token only when a request actually needs one.
         $artifact = ResponseSafety::removeScriptOptionToken($body, $removed);
+        $deferred = 0;
 
-        if ($removed === 0) {
+        if ($deferFormTokens) {
+            $artifact = ResponseSafety::deferFormTokens($artifact, $deferred);
+
+            // The token is also used outside its hidden input, where it cannot be
+            // replaced safely.
+            if ($artifact === null || ResponseSafety::containsJoomlaFormToken($artifact)) {
+                $rejection = 'csrf-token-in-response';
+
+                return null;
+            }
+        }
+
+        if ($removed === 0 && $deferred === 0) {
             return $artifact;
         }
 
@@ -255,6 +270,8 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         $position = stripos($artifact, '</head>');
 
         if ($loader === '' || $position === false) {
+            $rejection = 'csrf-refresh-unavailable';
+
             return null;
         }
 

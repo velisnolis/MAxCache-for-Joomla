@@ -7,6 +7,10 @@ GitHub release with the installable ZIP.
 
 - `maxcache:warm` requests the published top-level menu items as a guest so their
   pages are stored again after a purge. See [Warm-up](README.md#warm-up).
+- New option **Cache Pages with Forms**, off by default. When on, pages with a
+  Joomla form token are stored without it and the browser fetches the visitor's
+  own token on first interaction. See [Pages with Forms](README.md#pages-with-forms)
+  for the cases where it must stay off.
 - Pagecache plugins are asked again after the page is rendered. RSForm! Pro's
   exclusion listener only answers once a form has been displayed, so it never
   reached MAxCache, and a form page was stored when RSForm's CSRF option was off.

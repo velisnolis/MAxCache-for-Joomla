@@ -384,6 +384,41 @@ pluginFor($app, ['cache_root' => '/'])->onMaxcachePurgeAll($event);
 check('purge event refuses an unsafe cache root', 'unsafe_root', $event->getArgument('result')['skipped'] ?? null);
 
 
+// "Cache Pages with Forms": off by default (covered above). When on, the page is
+// stored with nameless placeholders instead of the visitor's token inputs.
+$formToken = 'c0ffee00c0ffee00c0ffee00c0ffee00';
+$formArtifact = JPATH_ROOT . '/maxcache/example.test/contact-form/index-https.html';
+$formPage = '<html><head></head><body><form method="post" action="/contact-form">'
+    . '<input type="text" name="form[Name]" value="1">'
+    . '<input type="hidden" name="' . $formToken . '" value="1"></form>'
+    . '<form><input value=\'1\' type="hidden" name=\'' . $formToken . '\' /></form></body></html>';
+DirectoryOperations::ensure(dirname($loaderFile));
+file_put_contents($loaderFile, '// loader');
+\Joomla\CMS\Plugin\PluginHelper::$enabled = ['ajax/maxcachefragment'];
+
+$app = siteRequest('/contact-form', $formPage);
+check('form page is rejected while the option is off', 'csrf-token-in-response', sentHeader($app, 'X-MAxCache-Reason'));
+check('form page leaves no artifact while the option is off', false, is_file($formArtifact));
+
+$app = siteRequest('/contact-form', $formPage, [], ['cache_form_pages' => 1]);
+$stored = (string) @file_get_contents($formArtifact);
+check('form page is stored when the option is on', 'stored', sentHeader($app, 'X-MAxCache-State'));
+check('live form response keeps the visitor token', $formPage, $app->body);
+check('stored form page has no token', false, str_contains($stored, $formToken));
+check('stored form page has one placeholder per token input', 2, substr_count($stored, '<input type="hidden" data-maxcache-form-token>'));
+check('stored form page keeps other inputs', true, str_contains($stored, '<input type="text" name="form[Name]" value="1">'));
+check('stored form page loads the token script', true, str_contains($stored, 'csrf-refresh.js'));
+
+$leaky = str_replace('</body>', '<a href="/logout?' . $formToken . '=1">x</a></body>', $formPage);
+$app = siteRequest('/contact-form', $leaky, [], ['cache_form_pages' => 1]);
+check('token used outside its input rejects the page', 'csrf-token-in-response', sentHeader($app, 'X-MAxCache-Reason'));
+check('token used outside its input removes the artifact', false, is_file($formArtifact));
+
+\Joomla\CMS\Plugin\PluginHelper::$enabled = [];
+$app = siteRequest('/contact-form', $formPage, [], ['cache_form_pages' => 1]);
+check('form page is not stored without the token endpoint', 'csrf-refresh-unavailable', sentHeader($app, 'X-MAxCache-Reason'));
+unlink($loaderFile);
+
 function pendingHeader(Application $app, string $name): string
 {
     $value = '';

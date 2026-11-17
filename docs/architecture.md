@@ -38,6 +38,8 @@ RSForm's page cache exclusion listener.
   query contains only these names. PHP never writes from such requests
 - `write_gzip`: write precompressed output alongside HTML
 - `purge_strategy`: full purge or targeted purge
+- `cache_form_pages`: store pages with a Joomla form token, replacing the token
+  with a placeholder the browser fills on first interaction; off by default
 - `debug_headers`: add MAx Cache debug headers
 - `server_snippet_mode`: choose Apache / generic mod_maxcache snippet output
 - `site_hosts`: known frontend hosts for targeted purge and snippet generation
@@ -85,7 +87,7 @@ Recheck guest/message state and the actual HTTP response status before writing.
 Ask the `pagecache` plugins a second time: some, like RSForm! Pro's, only know
 the page must be excluded after it has been rendered.
 Reject explicit `private`/`no-store` response directives or HTML containing a
-Joomla form token; send privacy/bypass headers and remove both older plain/gzip
+Joomla form token (unless `cache_form_pages` replaces it); send privacy/bypass headers and remove both older plain/gzip
 artifacts. Otherwise write the rendered HTML to the deterministic target path and
 optionally create a gzip companion file. The safety decision and debug headers
 must precede sending the response. Joomla's generic browser-cache headers are

@@ -160,6 +160,19 @@
 				/>
 
 				<field
+					name="cache_form_pages"
+					type="radio"
+					layout="joomla.form.field.radio.switcher"
+					label="PLG_SYSTEM_MAXCACHE_FIELD_CACHE_FORM_PAGES_LABEL"
+					description="PLG_SYSTEM_MAXCACHE_FIELD_CACHE_FORM_PAGES_DESC"
+					default="0"
+					filter="integer"
+				>
+					<option value="0">JNO</option>
+					<option value="1">JYES</option>
+				</field>
+
+				<field
 					name="write_gzip"
 					type="radio"
 					layout="joomla.form.field.radio.switcher"

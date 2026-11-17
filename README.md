@@ -33,6 +33,8 @@ Joomla auto-updates.
 
 Known limits:
 
+- Pages with a Joomla form token are not stored unless
+  [Cache Pages with Forms](#pages-with-forms) is on.
 - Requests with a query string are never stored; see
   [Runtime Safeguards](#runtime-safeguards).
 - Targeted purge covers the changed article and the menu items that link to it.
@@ -147,6 +149,58 @@ cache directory permissions require a scoped operational repair.
 When deploying 0.1.40, review/apply the updated server snippet and perform an
 approved, backed-up purge with pre/post route checks. Old artifacts served before PHP runs are not repaired
 by installing a write guard alone.
+
+## Pages with Forms
+
+By default a page whose HTML contains a Joomla form token is never stored
+(`csrf-token-in-response`). That covers RSForm! Pro, `com_contact` and any other
+form that prints `form.token`: those pages are rendered by Joomla on every visit.
+
+**Cache Pages with Forms** (`cache_form_pages`, off by default) stores them:
+
+1. The stored copy has each token input replaced by
+   `<input type="hidden" data-maxcache-form-token>`. The visitor who triggered the
+   render still gets their real token.
+2. When a visitor first focuses, clicks or types in such a form, the browser asks
+   `com_ajax` for their own token and fills the input. This starts their Joomla
+   session, so from then on their requests bypass the static cache.
+3. A submit that arrives before the token is held, then sent again through
+   `requestSubmit()` so the form's own validation runs. `form.submit()` waits too.
+4. If the token is also used outside its input (a link, an inline script), the page
+   is not stored.
+5. The token is only written into `POST` forms that submit to the same site,
+   including through any button's `formaction`; it is withdrawn if that changes
+   before the form is sent.
+
+Requirements and limits:
+
+- JavaScript, the `Ajax - MAxCache Fragment` plugin and the refresh script. Without
+  JavaScript the form is sent without a token and Joomla rejects it.
+- Only the token is per visitor. Everything else in the form is frozen as rendered
+  when the page was stored, until the next purge. Do not enable it for forms with:
+  - time-based spam checks or hidden fields holding a timestamp, date, IP address
+    or one-time code
+  - fields prefilled from the visitor, the session or the request
+  - a server-generated captcha whose challenge is embedded in the HTML
+- A script that serialises the form itself and sends it over AJAX gets the token
+  only if the visitor touched the form first, which is the usual case.
+- A form extension with its own `pagecache` exclusion keeps excluding its pages.
+  For RSForm! Pro, disable the `Page Cache - RSForm! Pro` plugin.
+- Purge after changing the setting, and test every form on the site.
+
+Tested on Joomla 6.2 in a real browser, loading the stored page:
+
+| Form | Result |
+| --- | --- |
+| RSForm! Pro 3.4.6, single-page example form | sent, thank-you page |
+| RSForm! Pro 3.4.6, multipage example form | sent, thank-you page |
+| RSForm! Pro built-in captcha field | **fails**: the stored page embeds one visitor's captcha image, so a new visitor's correct answer is rejected once; the page Joomla then renders has their own captcha |
+| Core login module (`mod_login`) inside a cached page | token accepted |
+| Core contact form (`com_contact`) on a menu item | token accepted |
+
+Not tested: reCAPTCHA and hCaptcha, RSForm AJAX validation, RSForm's Hashcash field,
+file uploads, RSForm shown through its module or content plugin, and other form
+extensions.
 
 ## Joomla Console Commands
 
