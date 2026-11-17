@@ -17,5 +17,9 @@
 	<languages>
 		<language tag="en-GB">language/en-GB/plg_ajax_maxcachefragment.ini</language>
 		<language tag="en-GB">language/en-GB/plg_ajax_maxcachefragment.sys.ini</language>
+		<language tag="ca-ES">language/ca-ES/plg_ajax_maxcachefragment.ini</language>
+		<language tag="ca-ES">language/ca-ES/plg_ajax_maxcachefragment.sys.ini</language>
+		<language tag="es-ES">language/es-ES/plg_ajax_maxcachefragment.ini</language>
+		<language tag="es-ES">language/es-ES/plg_ajax_maxcachefragment.sys.ini</language>
 	</languages>
 </extension>

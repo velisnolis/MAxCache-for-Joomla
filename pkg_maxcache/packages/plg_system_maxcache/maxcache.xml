@@ -20,6 +20,10 @@
 	<languages>
 		<language tag="en-GB">language/en-GB/plg_system_maxcache.ini</language>
 		<language tag="en-GB">language/en-GB/plg_system_maxcache.sys.ini</language>
+		<language tag="ca-ES">language/ca-ES/plg_system_maxcache.ini</language>
+		<language tag="ca-ES">language/ca-ES/plg_system_maxcache.sys.ini</language>
+		<language tag="es-ES">language/es-ES/plg_system_maxcache.ini</language>
+		<language tag="es-ES">language/es-ES/plg_system_maxcache.sys.ini</language>
 	</languages>
 	<config addfieldprefix="Vendor\Plugin\System\Maxcache\Field">
 		<fields name="params">

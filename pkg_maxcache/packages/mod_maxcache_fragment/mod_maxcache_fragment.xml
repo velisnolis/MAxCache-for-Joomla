@@ -18,6 +18,10 @@
 	<languages>
 		<language tag="en-GB">language/en-GB/mod_maxcache_fragment.ini</language>
 		<language tag="en-GB">language/en-GB/mod_maxcache_fragment.sys.ini</language>
+		<language tag="ca-ES">language/ca-ES/mod_maxcache_fragment.ini</language>
+		<language tag="ca-ES">language/ca-ES/mod_maxcache_fragment.sys.ini</language>
+		<language tag="es-ES">language/es-ES/mod_maxcache_fragment.ini</language>
+		<language tag="es-ES">language/es-ES/mod_maxcache_fragment.sys.ini</language>
 	</languages>
 	<media destination="mod_maxcache_fragment" folder="media">
 		<filename>joomla.asset.json</filename>
