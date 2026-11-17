@@ -4,8 +4,12 @@
 // and the session cookie bypasses the static cache, so it never runs on load.
 //
 // With "Cache Pages with Forms" on, the hidden token input of each form is stored
-// as <input type="hidden" data-maxcache-form-token>. The token is fetched when the
-// visitor first touches such a form, and a submit that comes earlier waits for it.
+// as <input type="hidden" data-maxcache-form-token>. A new visitor has no session
+// yet, and two first requests sent at once each start their own: only the last
+// cookie survives. A captcha that fetches its challenge when the form is focused and
+// keeps it in the session would lose it if this script's request overlapped. So the
+// token is fetched a moment after the visitor first touches the form, once such
+// requests have set the cookie, and again when the form is sent.
 (() => {
   'use strict';
 
@@ -132,11 +136,18 @@
       input.removeAttribute('data-maxcache-form-token');
       filled.push(input);
     });
+
+    // Inputs filled from an earlier fetch follow the current session's token.
+    filled.forEach((input) => {
+      if (input.name !== '') {
+        input.name = token;
+      }
+    });
   };
 
   const fetchToken = () => {
     if (pending === null) {
-      pending = fetch(endpoint, {
+      const request = fetch(endpoint, {
         method: 'GET',
         credentials: 'same-origin',
         cache: 'no-store',
@@ -169,12 +180,39 @@
           return token;
         })
         .catch((error) => {
-          pending = null;
+          if (pending === request) {
+            pending = null;
+          }
+
           throw error;
         });
+
+      pending = request;
     }
 
     return pending;
+  };
+
+  // The token of the session the visitor has right now. Waits for a fetch that is
+  // still under way, since that one may belong to a session that lost the race.
+  let refreshing = null;
+
+  const refreshToken = () => {
+    if (refreshing === null) {
+      const start = () => {
+        pending = null;
+
+        return fetchToken();
+      };
+      const done = () => {
+        refreshing = null;
+      };
+
+      refreshing = (pending || Promise.resolve()).then(start, start);
+      refreshing.then(done, done);
+    }
+
+    return refreshing;
   };
 
   window.MAxCache = window.MAxCache || {};
@@ -224,8 +262,13 @@
 
   window.MAxCache.formTokens = true;
 
+  // A form this script is responsible for: it still has a placeholder, or it holds
+  // a token this script put there.
   const needsToken = (form) => !!form && typeof form.querySelector === 'function'
-    && form.querySelector(placeholder) !== null && postsToThisSite(form);
+    && (form.querySelector(placeholder) !== null || filled.some((input) => input.form === form && input.name !== ''))
+    && postsToThisSite(form);
+
+  const confirmed = new WeakSet();
 
   const formOf = (event) => {
     const target = event.target;
@@ -237,21 +280,33 @@
     return target.form || (typeof target.closest === 'function' ? target.closest('form') : null);
   };
 
-  // Fetch early, while the visitor is still filling the form in, so scripts that
-  // serialise the form themselves find the token already in place.
+  // Fetch while the visitor is still filling the form in, so scripts that serialise
+  // the form themselves find the token in place, but not in the same instant as
+  // requests other scripts send on focus.
+  const warmDelay = 1500;
+  let warming = false;
+
   const warm = (event) => {
-    if (endpoint !== '' && needsToken(formOf(event))) {
-      fetchToken().catch(() => {});
+    if (warming || endpoint === '' || !needsToken(formOf(event))) {
+      return;
     }
+
+    warming = true;
+    window.setTimeout(() => {
+      fetchToken().catch(() => {
+        warming = false;
+      });
+    }, warmDelay);
   };
 
   ['focusin', 'pointerdown', 'keydown'].forEach((type) => {
     document.addEventListener(type, warm, {capture: true, passive: true});
   });
 
-  // A submit that arrives before the token: hold it, then send it again so the
-  // form's own validation and handlers run with the token present. If the token
-  // cannot be fetched the form is sent anyway and Joomla rejects it as before.
+  // Every submit of such a form is held while the token of the visitor's current
+  // session is fetched, then sent again so the form's own validation and handlers
+  // run with it in place. If the token cannot be fetched the form is sent anyway
+  // and Joomla rejects it as before.
   document.addEventListener('submit', (event) => {
     const form = event.target;
 
@@ -265,19 +320,31 @@
       return;
     }
 
+    if (confirmed.has(form)) {
+      confirmed.delete(form);
+
+      return;
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation();
 
     const submitter = event.submitter || null;
     const resend = () => {
+      confirmed.add(form);
+
       if (typeof form.requestSubmit === 'function') {
         form.requestSubmit(submitter);
       } else {
         form.submit();
       }
+
+      // requestSubmit() dispatches its submit event synchronously. If the browser's
+      // own validation stopped it, the next attempt must be checked again.
+      confirmed.delete(form);
     };
 
-    fetchToken().then(resend, () => {
+    refreshToken().then(resend, () => {
       form.querySelectorAll(placeholder).forEach((input) => input.removeAttribute('data-maxcache-form-token'));
       resend();
     });
@@ -294,13 +361,13 @@
         return nativeSubmit.call(this);
       }
 
-      if (endpoint === '' || !needsToken(this)) {
+      if (endpoint === '' || !needsToken(this) || confirmed.has(this)) {
         return nativeSubmit.call(this);
       }
 
       const send = () => nativeSubmit.call(this);
 
-      fetchToken().then(send, send);
+      refreshToken().then(send, send);
 
       return undefined;
     };

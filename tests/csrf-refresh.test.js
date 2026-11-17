@@ -35,6 +35,11 @@ function fakeForm(placeholders = 1, action = '/contact', method = 'POST') {
     querySelectorAll: () => inputs.filter((input) => input.pending),
     requestSubmit(submitter) {
       this.requestSubmits.push(submitter);
+
+      // A browser dispatches the submit event inside requestSubmit().
+      if (this.onRequestSubmit) {
+        this.onRequestSubmit(submitter);
+      }
     }
   };
 
@@ -51,6 +56,7 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
   const fetches = [];
   const queue = [...responses];
   const listeners = {};
+  const timers = [];
   class HTMLFormElement {
     submit() {
       this.nativeSubmits += 1;
@@ -65,6 +71,10 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
     String,
     Array,
     URL,
+    WeakSet,
+    setTimeout(callback, delay) {
+      timers.push({callback, delay});
+    },
     location: {href: 'https://www.example.org/contact', origin: 'https://www.example.org'},
     HTMLFormElement,
     document: {
@@ -103,9 +113,16 @@ function setup({token = '', responses = [], forms = [], controls = [], baseURI =
 
   vm.runInNewContext(source, context);
 
-  const dispatch = (type, event) => (listeners[type] || []).forEach((handler) => handler(event));
+  // Interaction events schedule the token fetch; run what they scheduled.
+  const dispatch = (type, event) => {
+    (listeners[type] || []).forEach((handler) => handler(event));
 
-  return {context, sent, fetches, options, dispatch, listeners};
+    if (type !== 'submit') {
+      timers.splice(0).forEach((timer) => timer.callback());
+    }
+  };
+
+  return {context, sent, fetches, options, dispatch, listeners, timers};
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -215,6 +232,19 @@ test('touching a cached form fetches the token and fills the placeholder', async
   assert.equal(options['csrf.token'], fresh);
 });
 
+test('the early fetch is delayed and scheduled once', async () => {
+  const form = fakeForm();
+  const {listeners, timers, fetches} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  listeners.focusin.forEach((handler) => handler({target: {form}}));
+  listeners.keydown.forEach((handler) => handler({target: {form}}));
+  assert.equal(fetches.length, 0);
+  assert.deepEqual(timers.map((timer) => timer.delay), [1500]);
+  timers[0].callback();
+  await settle();
+  assert.equal(fetches.length, 1);
+  assert.equal(form.inputs[0].name, fresh);
+});
+
 test('a form without a placeholder never fetches a token', async () => {
   const form = fakeForm(0);
   const {dispatch, fetches} = setup({forms: [form]});
@@ -228,20 +258,51 @@ test('a form without a placeholder never fetches a token', async () => {
   assert.equal(form.nativeSubmits, 1);
 });
 
-test('a submit before the token is held and sent again with the token', async () => {
+test('a submit is held and sent again with the token', async () => {
   const form = fakeForm();
   const button = {name: 'send'};
   const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  const resent = [];
+  form.onRequestSubmit = (submitter) => {
+    const event = submitEvent(form, submitter);
+    dispatch('submit', event);
+    resent.push([event.prevented, form.inputs[0].name]);
+  };
   const first = submitEvent(form, button);
   dispatch('submit', first);
   assert.equal(first.prevented && first.stopped, true);
   assert.equal(form.requestSubmits.length, 0);
   await settle();
   assert.deepEqual(form.requestSubmits, [button]);
+  assert.deepEqual(resent, [[false, fresh]]);
+});
+
+test('the token is fetched again at submit and replaces a stale one', async () => {
+  const form = fakeForm();
+  const current = 'c'.repeat(32);
+  const {dispatch, fetches, options} = setup({
+    forms: [form],
+    responses: [{status: 200, body: {token: fresh}}, {status: 200, body: {token: current}}]
+  });
+  dispatch('focusin', {target: {form}});
+  await settle();
   assert.equal(form.inputs[0].name, fresh);
-  const second = submitEvent(form, button);
-  dispatch('submit', second);
-  assert.equal(second.prevented, false);
+  const resent = [];
+  form.onRequestSubmit = () => {
+    const event = submitEvent(form);
+    dispatch('submit', event);
+    resent.push([event.prevented, form.inputs[0].name]);
+  };
+  const first = submitEvent(form);
+  dispatch('submit', first);
+  assert.equal(first.prevented, true);
+  await settle();
+  assert.equal(fetches.length, 2);
+  assert.deepEqual(resent, [[false, current]]);
+  assert.equal(options['csrf.token'], current);
+  const later = submitEvent(form);
+  dispatch('submit', later);
+  assert.equal(later.prevented, true);
 });
 
 test('form.submit() waits for the token', async () => {
@@ -258,14 +319,17 @@ test('form.submit() waits for the token', async () => {
 test('a form is still sent when the token cannot be fetched', async () => {
   const form = fakeForm();
   const {dispatch} = setup({forms: [form], responses: [{status: 503}]});
-  const first = submitEvent(form);
-  dispatch('submit', first);
+  const resent = [];
+  form.onRequestSubmit = () => {
+    const event = submitEvent(form);
+    dispatch('submit', event);
+    resent.push(event.prevented);
+  };
+  dispatch('submit', submitEvent(form));
   await settle();
   assert.equal(form.requestSubmits.length, 1);
+  assert.deepEqual(resent, [false]);
   assert.equal(form.inputs[0].name, '');
-  const second = submitEvent(form);
-  dispatch('submit', second);
-  assert.equal(second.prevented, false);
 });
 
 test('a form that posts to another site never receives the token', async () => {
