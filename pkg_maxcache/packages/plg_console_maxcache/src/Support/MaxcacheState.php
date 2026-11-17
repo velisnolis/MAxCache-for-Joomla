@@ -7,11 +7,13 @@
 
 namespace Vendor\Plugin\Console\Maxcache\Support;
 
+use Joomla\CMS\Factory;
 use Joomla\Database\DatabaseInterface;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\CacheOperations;
+use Vendor\Plugin\System\Maxcache\Support\CachePathBuilder;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
@@ -209,6 +211,137 @@ final class MaxcacheState
         ];
     }
 
+    /**
+     * Top-level published site menu items as guest URLs.
+     *
+     * @return array{base_url: string, targets: array<int, array{menu_id: int, url: string, path: string}>}
+     */
+    public function warmPlan(string $baseUrl = ''): array
+    {
+        $plugin = $this->loadPlugin('system', 'maxcache');
+
+        if ($plugin === null || (int) ($plugin->enabled ?? 0) !== 1) {
+            throw new \RuntimeException('System - MAxCache is not installed and enabled.');
+        }
+
+        $app = Factory::getApplication();
+
+        if (!(int) $app->get('sef', 1)) {
+            throw new \RuntimeException('Search engine friendly URLs are off; MAxCache only stores SEF paths.');
+        }
+
+        $params = $this->decodeJson((string) ($plugin->params ?? '{}'));
+
+        if (trim($baseUrl) === '') {
+            $baseUrl = trim((string) $app->get('live_site', ''));
+        }
+
+        if ($baseUrl === '') {
+            $hosts = $this->normalizeLines((string) ($params['site_hosts'] ?? ''));
+            $baseUrl = $hosts !== [] ? 'https://' . strtolower($hosts[0]) : '';
+        }
+
+        $base = WarmPlanner::parseBaseUrl($baseUrl);
+
+        if ($base === null) {
+            throw new \RuntimeException('Pass --base-url=https://www.example.com: no usable live_site or site host is configured.');
+        }
+
+        $languageFilter = $this->loadPlugin('system', 'languagefilter');
+        $languageFilterParams = $this->decodeJson((string) ($languageFilter?->params ?? '{}'));
+
+        $query = $this->db->getQuery(true)
+            ->select([$this->db->quoteName('lang_code'), $this->db->quoteName('sef')])
+            ->from($this->db->quoteName('#__languages'))
+            ->where($this->db->quoteName('published') . ' = 1')
+            ->order($this->db->quoteName('ordering') . ' ASC');
+        $this->db->setQuery($query);
+        $languages = [];
+
+        foreach ((array) $this->db->loadAssocList() as $language) {
+            $languages[(string) $language['lang_code']] = (string) $language['sef'];
+        }
+
+        $query = $this->db->getQuery(true)
+            ->select($this->db->quoteName('params'))
+            ->from($this->db->quoteName('#__extensions'))
+            ->where($this->db->quoteName('type') . ' = ' . $this->db->quote('component'))
+            ->where($this->db->quoteName('element') . ' = ' . $this->db->quote('com_languages'));
+        $this->db->setQuery($query);
+        $languageComponent = $this->decodeJson((string) $this->db->loadResult());
+
+        $query = $this->db->getQuery(true)
+            ->select([
+                $this->db->quoteName('id'),
+                $this->db->quoteName('path'),
+                $this->db->quoteName('home'),
+                $this->db->quoteName('language'),
+                $this->db->quoteName('type'),
+                $this->db->quoteName('level'),
+            ])
+            ->from($this->db->quoteName('#__menu'))
+            ->where($this->db->quoteName('client_id') . ' = 0')
+            ->where($this->db->quoteName('published') . ' = 1')
+            ->where($this->db->quoteName('level') . ' = 1')
+            ->where($this->db->quoteName('type') . ' = ' . $this->db->quote('component'))
+            ->order($this->db->quoteName('home') . ' DESC, ' . $this->db->quoteName('lft') . ' ASC');
+        $this->db->setQuery($query);
+
+        $this->loadSystemSupport();
+
+        return [
+            'base_url' => $base['base'],
+            'targets' => WarmPlanner::plan((array) $this->db->loadAssocList(), [
+                'base_url' => $base['base'],
+                'sef_rewrite' => (int) $app->get('sef_rewrite', 0),
+                'sef_suffix' => (int) $app->get('sef_suffix', 0),
+                'language_filter' => $languageFilter !== null && (int) ($languageFilter->enabled ?? 0) === 1,
+                'remove_default_prefix' => (int) ($languageFilterParams['remove_default_prefix'] ?? 0),
+                'default_language' => (string) ($languageComponent['site'] ?? 'en-GB'),
+                'languages' => $languages,
+                'excluded_menu_items' => SystemCacheSettings::mergeMenuItems((array) ($params['exclude_menu_items'] ?? [])),
+            ]),
+        ];
+    }
+
+    /**
+     * Where the system plugin stores a desktop guest request for this URL, ignoring
+     * pagecache-plugin variants, which only exist inside a site request.
+     */
+    public function artifactPath(string $url): ?string
+    {
+        $plugin = $this->loadPlugin('system', 'maxcache');
+        $base = WarmPlanner::parseBaseUrl((string) preg_replace('#^(https?://[^/]+).*$#i', '$1', $url));
+
+        if ($plugin === null || $base === null) {
+            return null;
+        }
+
+        $params = $this->decodeJson((string) ($plugin->params ?? '{}'));
+        $this->loadSystemSupport();
+
+        $query = $this->db->getQuery(true)
+            ->select($this->db->quoteName('sef'))
+            ->from($this->db->quoteName('#__languages'))
+            ->where($this->db->quoteName('published') . ' = 1');
+        $this->db->setQuery($query);
+
+        return CachePathBuilder::build([
+            'cache_root' => (string) ($params['cache_root'] ?? (JPATH_ROOT . '/maxcache')),
+            'host' => $base['host'],
+            'request_path' => (string) (parse_url($url, PHP_URL_PATH) ?: '/'),
+            'scheme' => $base['scheme'],
+            'vary_language' => (int) ($params['vary_language'] ?? 1),
+            'vary_mobile' => (int) ($params['vary_mobile'] ?? 0),
+            'is_mobile' => false,
+            'variant_suffix' => '',
+            'language_sefs' => array_values(array_filter(array_map(
+                static fn ($sef): string => strtolower(trim((string) $sef)),
+                (array) $this->db->loadColumn()
+            ))),
+        ]);
+    }
+
     private function loadPlugin(string $folder, string $element): ?object
     {
         $query = $this->db->getQuery(true)
@@ -246,6 +379,7 @@ final class MaxcacheState
     {
         $classes = [
             CacheOperations::class => 'CacheOperations.php',
+            CachePathBuilder::class => 'CachePathBuilder.php',
             JoomlaCacheCleaner::class => 'JoomlaCacheCleaner.php',
             AtomicFileWriter::class => 'AtomicFileWriter.php',
             BuiltInExclusions::class => 'BuiltInExclusions.php',

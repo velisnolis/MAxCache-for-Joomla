@@ -15,6 +15,7 @@ use Joomla\Event\SubscriberInterface;
 use Vendor\Plugin\Console\Maxcache\CliCommand\DiagnoseCommand;
 use Vendor\Plugin\Console\Maxcache\CliCommand\PurgeCommand;
 use Vendor\Plugin\Console\Maxcache\CliCommand\StatusCommand;
+use Vendor\Plugin\Console\Maxcache\CliCommand\WarmCommand;
 use Vendor\Plugin\Console\Maxcache\Support\MaxcacheState;
 
 \defined('_JEXEC') or die;
@@ -38,5 +39,6 @@ final class MaxcacheConsole extends CMSPlugin implements SubscriberInterface
         $app->addCommand(new StatusCommand($state));
         $app->addCommand(new DiagnoseCommand($state));
         $app->addCommand(new PurgeCommand($state));
+        $app->addCommand(new WarmCommand($state));
     }
 }

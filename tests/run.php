@@ -18,7 +18,9 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SystemCacheSettings.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetParams.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/HtaccessManager.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_console_maxcache/src/Support/WarmPlanner.php';
 
+use Vendor\Plugin\Console\Maxcache\Support\WarmPlanner;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
@@ -561,6 +563,72 @@ foreach ([
     assertSameValue($caller . ' does not build snippet params by hand', false,
         str_contains($callerSource, 'SnippetBuilder::build('));
 }
+
+// maxcache:warm builds guest URLs for top-level menu items without the site router.
+$warmItems = [
+    ['id' => 101, 'path' => 'inici', 'home' => 1, 'language' => 'ca-ES', 'type' => 'component', 'level' => 1],
+    ['id' => 102, 'path' => 'serveis', 'home' => 0, 'language' => 'ca-ES', 'type' => 'component', 'level' => 1],
+    ['id' => 103, 'path' => 'serveis/web', 'home' => 0, 'language' => 'ca-ES', 'type' => 'component', 'level' => 2],
+    ['id' => 104, 'path' => 'separador', 'home' => 0, 'language' => 'ca-ES', 'type' => 'separator', 'level' => 1],
+    ['id' => 105, 'path' => 'contacte', 'home' => 0, 'language' => '*', 'type' => 'component', 'level' => 1],
+    ['id' => 106, 'path' => 'servicios', 'home' => 0, 'language' => 'es-ES', 'type' => 'component', 'level' => 1],
+    ['id' => 107, 'path' => 'privat', 'home' => 0, 'language' => 'ca-ES', 'type' => 'component', 'level' => 1],
+    ['id' => 108, 'path' => 'services', 'home' => 0, 'language' => 'en-GB', 'type' => 'component', 'level' => 1],
+    ['id' => 109, 'path' => 'què fem', 'home' => 0, 'language' => 'ca-ES', 'type' => 'component', 'level' => 1],
+];
+$warmUrls = static fn (array $options, ?array $items = null): array => array_column(
+    WarmPlanner::plan($items ?? $warmItems, $options + ['base_url' => 'https://www.example.org', 'sef_rewrite' => 1]),
+    'url'
+);
+
+assertSameValue('warm: single-language site lists only level 1 component items', [
+    'https://www.example.org/',
+    'https://www.example.org/serveis',
+    'https://www.example.org/contacte',
+    'https://www.example.org/servicios',
+    'https://www.example.org/services',
+    'https://www.example.org/qu%C3%A8%20fem',
+], $warmUrls(['excluded_menu_items' => [107]]));
+
+assertSameValue('warm: language prefixes, all-language items once per published language', [
+    'https://www.example.org/ca/',
+    'https://www.example.org/ca/serveis',
+    'https://www.example.org/ca/contacte',
+    'https://www.example.org/es/contacte',
+    'https://www.example.org/es/servicios',
+], $warmUrls([
+    'language_filter' => 1,
+    'languages' => ['ca-ES' => 'ca', 'es-ES' => 'es'],
+    'default_language' => 'ca-ES',
+    'excluded_menu_items' => [107, 109],
+]));
+
+assertSameValue('warm: removed default prefix keeps the default language at the root', [
+    'https://www.example.org/',
+    'https://www.example.org/serveis',
+    'https://www.example.org/contacte',
+    'https://www.example.org/es/contacte',
+    'https://www.example.org/es/servicios',
+], $warmUrls([
+    'language_filter' => 1,
+    'remove_default_prefix' => 1,
+    'languages' => ['ca-ES' => 'ca', 'es-ES' => 'es'],
+    'default_language' => 'ca-ES',
+    'excluded_menu_items' => [107, 109],
+]));
+
+assertSameValue('warm: index.php entry point, suffix and subdirectory', [
+    'https://www.example.org/sub/index.php/',
+    'https://www.example.org/sub/index.php/serveis.html',
+], $warmUrls(
+    ['base_url' => 'https://www.example.org/sub/', 'sef_rewrite' => 0, 'sef_suffix' => 1],
+    \array_slice($warmItems, 0, 3)
+));
+
+assertSameValue('warm: base URL needs http(s) and a host', null, WarmPlanner::parseBaseUrl('www.example.org'));
+assertSameValue('warm: base URL rejects credentials', null, WarmPlanner::parseBaseUrl('https://u:p@www.example.org'));
+assertSameValue('warm: base URL keeps the port for the request', 'http://localhost:8080', WarmPlanner::parseBaseUrl('http://LOCALHOST:8080/')['base'] ?? null);
+assertSameValue('warm: no plan without a valid base URL', [], WarmPlanner::plan($warmItems, ['base_url' => 'ftp://x']));
 
 echo "\nHelper tests: " . $assertions . " assertions\n";
 
