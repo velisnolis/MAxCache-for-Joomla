@@ -29,7 +29,7 @@ Joomla auto-updates.
 - generated Apache / `mod_maxcache` snippet with preview, status detection and an
   explicit `Apply snippet` action with backup, also through Akeeba Admin Tools
 - dynamic module fragments and on-demand CSRF tokens for cached pages
-- console commands for status, diagnosis and purge
+- console commands for status, diagnosis, purge and warm-up
 
 Known limits:
 
@@ -38,8 +38,9 @@ Known limits:
 - Targeted purge covers the changed article and the menu items that link to it.
   Category, blog and module listings that show the article keep their stored copy
   until a full purge.
-- Nothing rebuilds the cache after a purge: the first visitor to each page pays for
-  the full Joomla render.
+- After a purge, `maxcache:warm` rebuilds only the top-level menu pages, and only
+  when it is run. For every other page the first visitor pays for the full Joomla
+  render.
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -158,11 +159,35 @@ php cli/joomla.php maxcache:status --format=json
 php cli/joomla.php maxcache:diagnose --strict
 php cli/joomla.php maxcache:purge
 php cli/joomla.php maxcache:purge --confirm
+php cli/joomla.php maxcache:warm --dry-run
+php cli/joomla.php maxcache:warm --base-url=https://www.example.com
 ```
 
 `maxcache:purge` without `--confirm` only prints the exact cache root and the
 file/byte count it would remove. The command refuses an empty, relative, symlinked,
 site-root, or known system-level cache path.
+
+### Warm-up
+
+`maxcache:warm` requests the published top-level menu items of the site menus as a
+guest, so the system plugin stores them again after a purge. Submenu items, articles
+and category pages are not requested.
+
+- The URLs are built from the menu paths, the SEF settings and the Language Filter
+  prefixes, not by Joomla's router. An item assigned to all languages is requested
+  once per published language. Run `--dry-run` first on a new site and compare the
+  list with the real menu.
+- `--base-url` selects the scheme and host. Without it the command uses `live_site`,
+  then the first entry of `site_hosts` over `https`. Artifacts are per host and
+  scheme, so warm the host visitors actually use.
+- Pages whose artifact already exists are reported as `cached` and not requested.
+  Redirects are reported (`http-301`) and not followed. `not-stored` means Joomla
+  answered 200 but no artifact appeared: the page is excluded, bypassed, or stored
+  under a pagecache-plugin variant. Only the desktop variant is warmed.
+- Requests run one at a time with a 200 ms pause (`--delay-ms`) and a 20 s timeout
+  (`--timeout`). The exit code is 1 when a request fails or returns a 5xx.
+
+To warm after a scheduled purge, run it from cron as the site's user.
 
 ## Purging From Another Extension
 

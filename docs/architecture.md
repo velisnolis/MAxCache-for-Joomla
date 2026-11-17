@@ -138,4 +138,4 @@ hash, so the admin UI and `maxcache:status` report:
 
 - query-specific cache keys: requests with a query string are never stored
 - purge graph for categories, blogs and modules that list a changed article
-- cache warm-up after a purge
+- cache warm-up beyond the top-level menu items requested by `maxcache:warm`

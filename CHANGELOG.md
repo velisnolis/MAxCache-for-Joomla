@@ -3,6 +3,11 @@
 Release notes for MAxCache for Joomla, newest first. Each version is published as a
 GitHub release with the installable ZIP.
 
+## Unreleased
+
+- `maxcache:warm` requests the published top-level menu items as a guest so their
+  pages are stored again after a purge. See [Warm-up](README.md#warm-up).
+
 ## 0.1.42
 
 - Admin Tools status reads saved configuration without loading editor form plugins.
