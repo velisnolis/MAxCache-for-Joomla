@@ -191,8 +191,11 @@ Requirements and limits:
 - A script that serialises the form itself and sends it over AJAX, without a
   submit event or `form.submit()`, sends no token. It can ask for one with
   `MAxCache.csrfToken()`.
-- A form extension with its own `pagecache` exclusion keeps excluding its pages.
-  For RSForm! Pro, disable the `Page Cache - RSForm! Pro` plugin.
+- RSForm! Pro's `Page Cache - RSForm! Pro` plugin excludes every page that shows a
+  form. With this option on, MAxCache sets that one objection aside, so the plugin
+  can stay enabled and an RSForm update that re-enables it changes nothing. Any
+  other `pagecache` plugin that excludes the page is still obeyed, and so is
+  RSForm's when the option is off.
 - Purge after changing the setting, and test every form on the site.
 
 Tested on Joomla 6.2 in a real browser, loading the stored page:
@@ -215,8 +218,6 @@ same-site request at the very moment of submit could still collide.
 
 Other things to know:
 
-- Updating RSForm! Pro re-enables its `Page Cache - RSForm! Pro` plugin, which
-  stops its form pages being stored again until the plugin is disabled.
 - A form in a module posts to the page it is on. If that page's component rejects
   POST requests the form fails, cached or not.
 

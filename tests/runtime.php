@@ -384,6 +384,60 @@ pluginFor($app, ['cache_root' => '/'])->onMaxcachePurgeAll($event);
 check('purge event refuses an unsafe cache root', 'unsafe_root', $event->getArgument('result')['skipped'] ?? null);
 
 
+// RSForm! Pro's pagecache plugin excludes every page that displayed a form. With
+// "Cache Pages with Forms" on, that exclusion alone must not block the page, and
+// the plugin does not have to be disabled (an RSForm update enables it again).
+if (!class_exists('RSFormProHelper', false)) {
+    eval('class RSFormProHelper { public static $formShown; }');
+}
+
+$rsformRun = static function (array $params, bool $otherPluginExcludes) use ($loaderFile): Application {
+    DirectoryOperations::ensure(dirname($loaderFile));
+    file_put_contents($loaderFile, '// loader');
+    \Joomla\CMS\Plugin\PluginHelper::$enabled = ['ajax/maxcachefragment'];
+    Uri::$request = 'https://example.test/rsform-page';
+    $app = new Application('site', new Input([], 'https://example.test/rsform-page'), new Identity());
+    $app->body = '<html><head></head><body><form method="post"><input type="hidden" name="'
+        . 'd00dfeedd00dfeedd00dfeedd00dfeed" value="1"></form></body></html>';
+    $app->allowCache(false);
+    $plugin = pluginFor($app, $params);
+    $dispatcher = new class {
+        public bool $other = false;
+        public function dispatch(string $name, object $event): object
+        {
+            if ($name === 'onPageCacheIsExcluded') {
+                $event->setArgument('result', [\RSFormProHelper::$formShown === true, $this->other]);
+            }
+            return $event;
+        }
+    };
+    $plugin->setDispatcher($dispatcher);
+    \RSFormProHelper::$formShown = null;
+    $plugin->onAfterRoute(new AfterRouteEvent('onAfterRoute', ['subject' => $app]));
+    // Both listeners only object once the page has been rendered.
+    \RSFormProHelper::$formShown = true;
+    $dispatcher->other = $otherPluginExcludes;
+    $plugin->onAfterRender(new AfterRenderEvent('onAfterRender', ['subject' => $app]));
+    $plugin->onBeforeRespond(new BeforeRespondEvent('onBeforeRespond', ['subject' => $app]));
+    return $app;
+};
+$rsformArtifact = JPATH_ROOT . '/maxcache/example.test/rsform-page/index-https.html';
+
+$app = $rsformRun(['cache_form_pages' => 1], false);
+check('RSForm page is stored with the option on and its pagecache plugin enabled', 'stored', pendingHeader($app, 'X-MAxCache-State'));
+check('RSForm page artifact has the placeholder', true, str_contains((string) @file_get_contents($rsformArtifact), 'data-maxcache-form-token'));
+check('RSForm flag is restored for other listeners', true, \RSFormProHelper::$formShown);
+
+$app = $rsformRun(['cache_form_pages' => 1], true);
+check('another pagecache plugin still excludes the RSForm page', 'pagecache-plugin', pendingHeader($app, 'X-MAxCache-Reason'));
+check('another pagecache plugin removes the artifact', false, is_file($rsformArtifact));
+check('RSForm flag is restored after a rejection', true, \RSFormProHelper::$formShown);
+
+$app = $rsformRun([], false);
+check('RSForm page stays excluded with the option off', 'pagecache-plugin', pendingHeader($app, 'X-MAxCache-Reason'));
+\RSFormProHelper::$formShown = null;
+unlink($loaderFile);
+
 // "Cache Pages with Forms": off by default (covered above). When on, the page is
 // stored with nameless placeholders instead of the visitor's token inputs.
 $formToken = 'c0ffee00c0ffee00c0ffee00c0ffee00';

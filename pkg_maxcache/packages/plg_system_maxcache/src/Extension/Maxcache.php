@@ -193,7 +193,9 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         // Ask the pagecache plugins again now that the page is rendered. Listeners
         // such as RSForm! Pro's only know they must exclude the page once their
         // form has been displayed, which is after onAfterRoute.
-        if ($this->isExcludedByPagecachePlugins()) {
+        $deferFormTokens = (bool) (int) $this->params->get('cache_form_pages', 0);
+
+        if ($this->isExcludedByPagecachePlugins() && !($deferFormTokens && $this->isExcludedOnlyByRsformForm())) {
             $this->rejectResponse('pagecache-plugin');
             return;
         }
@@ -203,8 +205,6 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         if ($body === '') {
             return;
         }
-
-        $deferFormTokens = (bool) (int) $this->params->get('cache_form_pages', 0);
 
         if (!$deferFormTokens && ResponseSafety::containsJoomlaFormToken($body)) {
             $this->rejectResponse('csrf-token-in-response');
@@ -1008,6 +1008,33 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             ->getArgument('result', []);
 
         return \in_array(true, $results, true);
+    }
+
+    /**
+     * RSForm! Pro's pagecache plugin excludes any page that displayed a form, by
+     * returning its RSFormProHelper::$formShown flag. With "Cache Pages with Forms"
+     * on that is exactly the page the site owner asked to store, and an RSForm
+     * update re-enables the plugin, so disabling it would not last. Ask the
+     * listeners again with the flag lowered: if nothing else objects, the form was
+     * the only reason.
+     */
+    private function isExcludedOnlyByRsformForm(): bool
+    {
+        if (!class_exists('RSFormProHelper', false) || !property_exists('RSFormProHelper', 'formShown')) {
+            return false;
+        }
+
+        if (\RSFormProHelper::$formShown !== true) {
+            return false;
+        }
+
+        \RSFormProHelper::$formShown = false;
+
+        try {
+            return !$this->isExcludedByPagecachePlugins();
+        } finally {
+            \RSFormProHelper::$formShown = true;
+        }
     }
 
     private function getPagecacheVariantSuffix(): string
