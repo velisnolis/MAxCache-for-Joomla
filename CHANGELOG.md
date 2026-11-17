@@ -3,12 +3,15 @@
 Release notes for MAxCache for Joomla, newest first. Each version is published as a
 GitHub release with the installable ZIP.
 
-## Unreleased
+## 0.1.44
 
 - With **Cache Pages with Forms** on, RSForm! Pro pages are stored while its
   `Page Cache - RSForm! Pro` plugin is enabled. Before, that plugin had to be
   disabled by hand, and every RSForm update enabled it again. Other pagecache
   plugins are still obeyed.
+
+No change to the generated server snippet or the cache layout: updating from 0.1.43
+needs no snippet reapply or purge. Nothing changes while the option is off.
 
 ## 0.1.43
 
