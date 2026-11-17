@@ -15,7 +15,7 @@ const source = fs.readFileSync(
 const endpoint = '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
 
 // A form double: one token placeholder unless `placeholders` says otherwise.
-function fakeForm(placeholders = 1) {
+function fakeForm(placeholders = 1, action = '/contact') {
   const inputs = Array.from({length: placeholders}, () => ({
     name: '',
     value: '',
@@ -28,6 +28,7 @@ function fakeForm(placeholders = 1) {
   }));
   const form = {
     inputs,
+    getAttribute: (name) => (name === 'action' ? action : null),
     nativeSubmits: 0,
     requestSubmits: [],
     querySelector: () => inputs.find((input) => input.pending) || null,
@@ -36,6 +37,10 @@ function fakeForm(placeholders = 1) {
       this.requestSubmits.push(submitter);
     }
   };
+
+  inputs.forEach((input) => {
+    input.form = form;
+  });
 
   return form;
 }
@@ -59,6 +64,8 @@ function setup({token = '', responses = [], forms = []} = {}) {
     Error,
     String,
     Array,
+    URL,
+    location: {href: 'https://www.example.org/contact', origin: 'https://www.example.org'},
     HTMLFormElement,
     document: {
       currentScript: {dataset: {maxcacheTokenEndpoint: endpoint}},
@@ -256,6 +263,26 @@ test('a form is still sent when the token cannot be fetched', async () => {
   const second = submitEvent(form);
   dispatch('submit', second);
   assert.equal(second.prevented, false);
+});
+
+test('a form that posts to another site never receives the token', async () => {
+  const local = fakeForm(1, '');
+  const external = fakeForm(1, 'https://evil.example/collect');
+  const schemeless = fakeForm(1, '//evil.example/collect');
+  const {dispatch, fetches} = setup({forms: [local, external, schemeless], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('focusin', {target: {form: external}});
+  const event = submitEvent(external);
+  dispatch('submit', event);
+  external.submit();
+  await settle();
+  assert.equal(fetches.length, 0);
+  assert.equal(event.prevented, false);
+  assert.equal(external.nativeSubmits, 1);
+  dispatch('focusin', {target: {form: local}});
+  await settle();
+  assert.equal(local.inputs[0].name, fresh);
+  assert.deepEqual([external.inputs[0].name, schemeless.inputs[0].name], ['', '']);
+  assert.deepEqual([external.inputs[0].pending, schemeless.inputs[0].pending], [true, true]);
 });
 
 test('pages without core.js still get form tokens', async () => {

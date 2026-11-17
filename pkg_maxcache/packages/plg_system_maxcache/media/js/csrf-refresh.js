@@ -22,6 +22,23 @@
     return option || fetched;
   };
 
+  // The token only goes into forms that post back to this site. A placeholder in a
+  // form with an external action, or outside any form, stays empty: markup injected
+  // into a page must not be able to send a visitor's token elsewhere.
+  const postsToThisSite = (form) => {
+    if (!form) {
+      return false;
+    }
+
+    try {
+      const action = typeof form.getAttribute === 'function' ? form.getAttribute('action') || '' : '';
+
+      return new URL(action, window.location.href).origin === window.location.origin;
+    } catch (error) {
+      return false;
+    }
+  };
+
   // Turn the stored placeholders into the input Joomla expects: name=<token>, value=1.
   const fillForms = (token) => {
     if (typeof document.querySelectorAll !== 'function') {
@@ -29,6 +46,10 @@
     }
 
     document.querySelectorAll(placeholder).forEach((input) => {
+      if (!postsToThisSite(input.form)) {
+        return;
+      }
+
       input.name = token;
       input.value = '1';
       input.removeAttribute('data-maxcache-form-token');
@@ -125,7 +146,8 @@
 
   window.MAxCache.formTokens = true;
 
-  const needsToken = (form) => !!form && typeof form.querySelector === 'function' && form.querySelector(placeholder) !== null;
+  const needsToken = (form) => !!form && typeof form.querySelector === 'function'
+    && form.querySelector(placeholder) !== null && postsToThisSite(form);
 
   const formOf = (event) => {
     const target = event.target;

@@ -168,6 +168,7 @@ form that prints `form.token`: those pages are rendered by Joomla on every visit
    `requestSubmit()` so the form's own validation runs. `form.submit()` waits too.
 4. If the token is also used outside its input (a link, an inline script), the page
    is not stored.
+5. The token is only written into forms whose `action` points to the same site.
 
 Requirements and limits:
 
