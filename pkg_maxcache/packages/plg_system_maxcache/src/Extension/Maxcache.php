@@ -21,7 +21,6 @@ use Joomla\CMS\Router\Route;
 use Joomla\CMS\Router\SiteRouter;
 use Joomla\CMS\Session\Session;
 use Joomla\CMS\Uri\Uri;
-use Joomla\Component\Content\Site\Helper\RouteHelper as ContentRouteHelper;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherAwareInterface;
 use Joomla\Event\DispatcherAwareTrait;
@@ -29,6 +28,7 @@ use Joomla\Event\Event;
 use Joomla\Event\Priority;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Registry\Registry;
+use Vendor\Plugin\System\Maxcache\Support\AdminPurgeButton;
 use Vendor\Plugin\System\Maxcache\Support\AdminToolsManager;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
@@ -39,13 +39,17 @@ use Vendor\Plugin\System\Maxcache\Support\DirectoryOperations;
 use Vendor\Plugin\System\Maxcache\Support\HtaccessManager;
 use Vendor\Plugin\System\Maxcache\Support\JoomlaCacheCleaner;
 use Vendor\Plugin\System\Maxcache\Support\LanguageRoutingDetector;
+use Vendor\Plugin\System\Maxcache\Support\PurgePathResolver;
 use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
+use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerConfigurator;
 use Vendor\Plugin\System\Maxcache\Support\RegularLabsCacheCleanerDetector;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SiteHostDetector;
+use Vendor\Plugin\System\Maxcache\Support\SnippetApplier;
 use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheStatus;
 use Vendor\Plugin\System\Maxcache\Support\SystemCacheSettings;
+use Vendor\Plugin\System\Maxcache\Support\TargetedPurge;
 
 \defined('_JEXEC') or die;
 
@@ -369,7 +373,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         $pks = $event->getArgument('pks', []);
         $ids = \is_array($pks) ? $pks : [$pks];
-        $items = $this->loadItemsByIds($context, $ids);
+        $items = PurgePathResolver::loadItemsByIds($context, $ids);
 
         $this->purgeChangedItems($context, $items);
     }
@@ -458,7 +462,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                 continue;
             }
 
-            $paths = array_merge($paths, $this->resolvePurgePaths($context, $item));
+            $paths = array_merge($paths, PurgePathResolver::resolve($context, $item));
 
             $alias = isset($item->alias) && \is_string($item->alias) ? trim($item->alias) : '';
 
@@ -469,8 +473,10 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         $paths = array_values(array_unique(array_filter($paths, static fn ($path): bool => \is_string($path) && trim($path) !== '')));
 
+        $root = (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache');
+
         if ($paths !== []) {
-            $this->purgePaths($paths);
+            TargetedPurge::purgePaths($root, $this->getKnownHosts(), $paths);
             return;
         }
 
@@ -478,7 +484,7 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
 
         if ($aliases !== []) {
             foreach ($aliases as $alias) {
-                $this->purgeAlias($alias);
+                TargetedPurge::purgeAlias($root, $alias);
             }
 
             return;
@@ -491,53 +497,6 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     {
         return !$this->usesRegularLabsAutomation()
             && (bool) (int) $this->params->get('full_regenerate_on_save', 1);
-    }
-
-    private function loadItemsByIds(string $context, array $ids): array
-    {
-        $ids = array_values(array_unique(array_filter(
-            array_map(static fn ($id): int => (int) $id, $ids),
-            static fn (int $id): bool => $id > 0
-        )));
-
-        if ($ids === []) {
-            return [];
-        }
-
-        try {
-            /** @var DatabaseInterface $db */
-            $db = Factory::getContainer()->get(DatabaseInterface::class);
-
-            if ($context === 'com_content.article') {
-                $query = $db->getQuery(true)
-                    ->select([
-                        $db->quoteName('id'),
-                        $db->quoteName('catid'),
-                        $db->quoteName('alias'),
-                        $db->quoteName('language'),
-                    ])
-                    ->from($db->quoteName('#__content'))
-                    ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')');
-            } else {
-                $query = $db->getQuery(true)
-                    ->select([
-                        $db->quoteName('id'),
-                        $db->quoteName('path'),
-                        $db->quoteName('alias'),
-                        $db->quoteName('home'),
-                        $db->quoteName('link'),
-                        $db->quoteName('language'),
-                    ])
-                    ->from($db->quoteName('#__menu'))
-                    ->where($db->quoteName('id') . ' IN (' . implode(',', $ids) . ')');
-            }
-
-            $db->setQuery($query);
-
-            return (array) $db->loadObjectList();
-        } catch (\Throwable $exception) {
-            return [];
-        }
     }
 
     private function resetRequestState(): void
@@ -607,7 +566,11 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
                         'warning'
                     );
                 } else {
-                    $this->configureRegularLabsCacheCleaner($status);
+                    RegularLabsCacheCleanerConfigurator::configure(
+                        Factory::getContainer()->get(DatabaseInterface::class),
+                        $status,
+                        $this->params
+                    );
                     $this->updatePluginParams([
                         'purge_automation_driver' => 'regularlabs',
                         'full_regenerate_on_save' => 0,
@@ -639,36 +602,11 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
         }
 
         try {
-            $snippet = $this->buildCurrentSnippet();
-
-            if (AdminToolsManager::isAvailable()) {
-                $result = AdminToolsManager::applySnippet(
-                    $snippet,
-                    (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache')
-                );
-                $message = 'MAx Cache snippet applied to the Admin Tools custom .htaccess footer and .htaccess was rebuilt.';
-
-                if (!empty($result['footer_backup_path'])) {
-                    $message .= ' Footer backup created at ' . $result['footer_backup_path'] . '.';
-                }
-
-                if (!empty($result['exceptiondirs_backup_path'])) {
-                    $message .= ' Admin Tools server-protection exceptions backup created at ' . $result['exceptiondirs_backup_path'] . '.';
-                }
-            } else {
-                $status = HtaccessManager::getStatus($snippet);
-
-                if ($status['akeeba_detected']) {
-                    $app->enqueueMessage('Akeeba Admin Tools markers were detected in .htaccess. Review rule ordering carefully after applying the managed MAx Cache block.', 'warning');
-                }
-
-                $result = HtaccessManager::applySnippet($snippet);
-                $message = 'MAx Cache snippet applied to .htaccess.';
-            }
-
-            if (!empty($result['backup_path'])) {
-                $message .= ' Backup created at ' . $result['backup_path'] . '.';
-            }
+            $message = SnippetApplier::apply(
+                $this->buildCurrentSnippet(),
+                (string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'),
+                static fn (string $warning) => $app->enqueueMessage($warning, 'warning')
+            );
 
             $this->clearSnippetStatusCache();
 
@@ -752,82 +690,13 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
     private function injectAdminPurgeButton(): void
     {
         $app = $this->getApplication();
-        $body = (string) $app->getBody();
 
-        if (stripos($body, 'data-maxcache-purge-action') !== false) {
-            return;
-        }
-
-        $token = Session::getFormToken();
-        $action = Route::_('index.php', false);
-        $confirm = htmlspecialchars(
-            'Purge all MAx Cache static files now? This will remove the entire static cache directory and the next public requests will rebuild it.',
-            ENT_QUOTES,
-            'UTF-8'
-        );
-        $warnings = $this->getAdminPurgeWarnings();
-        $warningText = implode("\n", $warnings);
-        $warningTitle = $warnings !== []
-            ? htmlspecialchars($warningText, ENT_QUOTES, 'UTF-8')
-            : '';
-        $headerWarning = $warnings !== []
-            ? '<span class="badge bg-warning text-dark ms-1" title="' . $warningTitle . '">!</span>'
-            : '';
-        $buttonClass = $warnings !== [] ? 'btn btn-warning' : 'btn btn-danger';
-        $floatingWarning = $warnings !== []
-            ? '<div class="small text-dark bg-warning p-2 mt-2 rounded" style="max-width:280px;">' . nl2br($warningTitle, false) . '</div>'
-            : '';
-
-        $styleMarkup = <<<HTML
-<style data-maxcache-purge-action-style>
-@media (min-width: 1200px) {
-  [data-maxcache-purge-action="floating"] { display: none !important; }
-}
-@media (max-width: 1199.98px) {
-  [data-maxcache-purge-action="floating"] { display: block !important; }
-}
-</style>
-HTML;
-
-        $headerMarkup = <<<HTML
-<div class="header-item" data-maxcache-purge-action="header">
-  <a href="javascript:" onclick="return document.getElementById('maxcache-purge-form')?.requestSubmit();" class="header-item-content" title="Purge MAx Cache">
-    <div class="header-item-icon">
-      <span class="icon-trash" aria-hidden="true"></span>
-    </div>
-    <div class="header-item-text">Purge MAx Cache{$headerWarning}</div>
-  </a>
-  <form id="maxcache-purge-form" method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="display:none;">
-    <input type="hidden" name="maxcache_action" value="purge_cache">
-    <input type="hidden" name="{$token}" value="1">
-  </form>
-</div>
-HTML;
-
-        $floatingMarkup = <<<HTML
-<div data-maxcache-purge-action="floating" style="display:none;position:fixed;right:18px;bottom:18px;z-index:1080;">
-  <form method="post" action="{$action}" onsubmit="return confirm('{$confirm}');" style="margin:0;">
-    <input type="hidden" name="maxcache_action" value="purge_cache">
-    <input type="hidden" name="{$token}" value="1">
-    <button type="submit" class="{$buttonClass}">
-      Purge MAx Cache
-    </button>
-    {$floatingWarning}
-  </form>
-</div>
-HTML;
-
-        $updated = preg_replace(
-            '#<div class="header-items d-flex ms-auto">#i',
-            '$0' . "\n" . $headerMarkup,
-            $body,
-            1,
-            $headerMatches
-        );
-
-        $body = ($headerMatches ?? 0) > 0 ? (string) $updated : $body;
-
-        $app->setBody((string) preg_replace('#</body>#i', $styleMarkup . "\n" . $floatingMarkup . "\n</body>", $body, 1));
+        $app->setBody(AdminPurgeButton::inject(
+            (string) $app->getBody(),
+            Session::getFormToken(),
+            Route::_('index.php', false),
+            $this->getAdminPurgeWarnings()
+        ));
     }
 
     private function getAdminPurgeWarnings(): array
@@ -1272,56 +1141,6 @@ HTML;
         }
     }
 
-    private function configureRegularLabsCacheCleaner(array $status): void
-    {
-        /** @var DatabaseInterface $db */
-        $db = Factory::getContainer()->get(DatabaseInterface::class);
-
-        $query = $db->getQuery(true)
-            ->select([$db->quoteName('extension_id'), $db->quoteName('params')])
-            ->from($db->quoteName('#__extensions'))
-            ->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
-            ->where($db->quoteName('folder') . ' = ' . $db->quote('system'))
-            ->where($db->quoteName('element') . ' = ' . $db->quote('cachecleaner'));
-
-        $db->setQuery($query);
-        $row = $db->loadAssoc();
-
-        if (!$row || empty($row['extension_id'])) {
-            throw new \RuntimeException('Could not locate the Regular Labs Cache Cleaner plugin.');
-        }
-
-        $cacheCleanerParams = new Registry((string) ($row['params'] ?? '{}'));
-        $relativeFolder = ltrim((string) ($status['recommended_path'] ?? '/maxcache'), '/');
-        $folders = $this->normalizeLineList((string) $cacheCleanerParams->get('clean_folders_selection', ''));
-
-        if ($relativeFolder !== '' && !\in_array($relativeFolder, $folders, true)) {
-            $folders[] = $relativeFolder;
-        }
-
-        $cacheCleanerParams->set('clean_folders', 1);
-        $cacheCleanerParams->set('clean_folders_selection', implode("\n", $folders));
-        $cacheCleanerParams->set('clean_folders_min_age', 0);
-        $cacheCleanerParams->set('auto_save_admin', (int) $this->params->get('full_regenerate_on_save', 1));
-        $cacheCleanerParams->set('auto_save_admin_msg', 0);
-        $cacheCleanerParams->set('auto_save_front', 0);
-        $cacheCleanerParams->set('auto_save_front_msg', 0);
-        $cacheCleanerParams->set('auto_interval_admin', (int) $this->params->get('full_regenerate_on_interval', 0));
-        $cacheCleanerParams->set(
-            'auto_interval_admin_secs',
-            max(60, (int) $this->params->get('full_regenerate_interval_seconds', 3600))
-        );
-        $cacheCleanerParams->set('auto_interval_admin_msg', 0);
-
-        $update = $db->getQuery(true)
-            ->update($db->quoteName('#__extensions'))
-            ->set($db->quoteName('params') . ' = ' . $db->quote((string) $cacheCleanerParams))
-            ->where($db->quoteName('extension_id') . ' = ' . (int) $row['extension_id']);
-
-        $db->setQuery($update);
-        $db->execute();
-    }
-
     private function getOwnExtensionId(DatabaseInterface $db): int
     {
         $query = $db->getQuery(true)
@@ -1336,136 +1155,11 @@ HTML;
         return (int) $db->loadResult();
     }
 
-    private function purgeAlias(string $alias): void
-    {
-        $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
-
-        if ($root === '' || !is_dir($root)) {
-            return;
-        }
-
-        $safeAlias = $this->sanitizePathSegment($alias);
-        $directories = DirectoryOperations::listDirectories($root);
-
-        foreach ($directories as $directory) {
-            if (basename($directory) === $safeAlias) {
-                DirectoryOperations::delete($directory);
-            }
-        }
-    }
-
-    private function purgePaths(array $paths): void
-    {
-        $root = rtrim((string) $this->params->get('cache_root', '/var/cache/joomla-maxcache'), '/');
-
-        if ($root === '' || !is_dir($root)) {
-            return;
-        }
-
-        $hosts = $this->getKnownHosts();
-
-        foreach ($paths as $path) {
-            $segments = array_values(array_filter(explode('/', trim((string) $path, '/')), 'strlen'));
-
-            if ($segments === []) {
-                foreach ($hosts as $host) {
-                    $directory = $root . '/' . $this->sanitizePathSegment($host);
-
-                    if (is_dir($directory)) {
-                        DirectoryOperations::delete($directory);
-                    }
-                }
-
-                continue;
-            }
-
-            foreach ($hosts as $host) {
-                $directory = $root . '/' . $this->sanitizePathSegment($host);
-
-                foreach ($segments as $segment) {
-                    $directory .= '/' . $this->sanitizePathSegment($segment);
-                }
-
-                if (is_dir($directory)) {
-                    DirectoryOperations::delete($directory);
-                }
-            }
-        }
-    }
-
     private function getKnownHosts(): array
     {
         $detected = SiteHostDetector::detect((string) $this->params->get('site_hosts', ''));
 
         return $detected !== [] ? $detected : ['site'];
-    }
-
-    private function resolvePurgePaths(string $context, object $item): array
-    {
-        $paths = [];
-
-        if ($context === 'com_menus.item') {
-            if (isset($item->path) && \is_string($item->path) && trim($item->path) !== '') {
-                $paths[] = '/' . trim($item->path, '/');
-            }
-
-            if (isset($item->home) && (int) $item->home === 1) {
-                $paths[] = '/';
-            }
-
-            return array_values(array_unique($paths));
-        }
-
-        if ($context === 'com_content.article') {
-            if (
-                class_exists(ContentRouteHelper::class)
-                && isset($item->id, $item->catid)
-            ) {
-                $route = ContentRouteHelper::getArticleRoute((int) $item->id, (int) $item->catid, $item->language ?? '*');
-                $paths[] = parse_url(Route::_($route), PHP_URL_PATH) ?: '';
-            }
-
-            $paths = array_merge($paths, $this->resolveMenuPathsForArticle((int) ($item->id ?? 0)));
-
-            if (isset($item->alias) && \is_string($item->alias) && trim($item->alias) !== '') {
-                $paths[] = '/' . trim($item->alias, '/');
-            }
-        }
-
-        return array_values(array_unique(array_filter($paths, static fn ($path): bool => \is_string($path))));
-    }
-
-    private function resolveMenuPathsForArticle(int $articleId): array
-    {
-        if ($articleId <= 0) {
-            return [];
-        }
-
-        try {
-            /** @var DatabaseInterface $db */
-            $db = Factory::getContainer()->get(DatabaseInterface::class);
-            $query = $db->getQuery(true)
-                ->select($db->quoteName('path'))
-                ->from($db->quoteName('#__menu'))
-                ->where($db->quoteName('published') . ' = 1')
-                ->where($db->quoteName('path') . ' <> ' . $db->quote(''))
-                ->where('('
-                    . $db->quoteName('link') . ' LIKE ' . $db->quote('%view=article%&id=' . $articleId)
-                    . ' OR '
-                    . $db->quoteName('link') . ' LIKE ' . $db->quote('%view=article%&id=' . $articleId . '&%')
-                    . ')');
-
-            $db->setQuery($query);
-
-            return array_map(static fn (string $path): string => '/' . trim($path, '/'), (array) $db->loadColumn());
-        } catch (\Throwable $exception) {
-            return [];
-        }
-    }
-
-    private function sanitizePathSegment(string $segment): string
-    {
-        return CachePathBuilder::sanitizePathSegment($segment);
     }
 
     private function normalizeLineList(string $value): array

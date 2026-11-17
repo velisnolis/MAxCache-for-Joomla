@@ -19,8 +19,11 @@ require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Suppor
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/SnippetParams.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/HtaccessManager.php';
 require_once __DIR__ . '/../pkg_maxcache/packages/plg_console_maxcache/src/Support/WarmPlanner.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/TargetedPurge.php';
+require_once __DIR__ . '/../pkg_maxcache/packages/plg_system_maxcache/src/Support/AdminPurgeButton.php';
 
 use Vendor\Plugin\Console\Maxcache\Support\WarmPlanner;
+use Vendor\Plugin\System\Maxcache\Support\AdminPurgeButton;
 use Vendor\Plugin\System\Maxcache\Support\AtomicFileWriter;
 use Vendor\Plugin\System\Maxcache\Support\BypassCookieNames;
 use Vendor\Plugin\System\Maxcache\Support\BuiltInExclusions;
@@ -33,6 +36,7 @@ use Vendor\Plugin\System\Maxcache\Support\RegexPatternMatcher;
 use Vendor\Plugin\System\Maxcache\Support\ResponseSafety;
 use Vendor\Plugin\System\Maxcache\Support\SnippetBuilder;
 use Vendor\Plugin\System\Maxcache\Support\SnippetParams;
+use Vendor\Plugin\System\Maxcache\Support\TargetedPurge;
 
 $failures = [];
 $assertions = 0;
@@ -636,6 +640,53 @@ assertSameValue('warm: base URL needs http(s) and a host', null, WarmPlanner::pa
 assertSameValue('warm: base URL rejects credentials', null, WarmPlanner::parseBaseUrl('https://u:p@www.example.org'));
 assertSameValue('warm: base URL keeps the port for the request', 'http://localhost:8080', WarmPlanner::parseBaseUrl('http://LOCALHOST:8080/')['base'] ?? null);
 assertSameValue('warm: no plan without a valid base URL', [], WarmPlanner::plan($warmItems, ['base_url' => 'ftp://x']));
+
+// Targeted purge removes a path under every known host and leaves siblings alone.
+$purgeRoot = sys_get_temp_dir() . '/maxcache-targeted-' . bin2hex(random_bytes(6));
+$purgeFiles = [
+    'www.example.org/news/index-https.html',
+    'www.example.org/news/item/index-https.html',
+    'www.example.org/about/index-https.html',
+    'example.org/news/index-https.html',
+    'example.org/ca/news/index-https.html',
+    'other.example/news/index-https.html',
+];
+
+foreach ($purgeFiles as $file) {
+    DirectoryOperations::ensure(\dirname($purgeRoot . '/' . $file));
+    file_put_contents($purgeRoot . '/' . $file, 'x');
+}
+
+$remaining = static fn (): array => array_values(array_filter(
+    $purgeFiles,
+    static fn (string $file): bool => is_file($purgeRoot . '/' . $file)
+));
+
+TargetedPurge::purgePaths($purgeRoot . '/', ['www.example.org', 'example.org'], ['/news/', '/missing']);
+assertSameValue('targeted purge removes the path and its children on known hosts only', [
+    'www.example.org/about/index-https.html',
+    'example.org/ca/news/index-https.html',
+    'other.example/news/index-https.html',
+], $remaining());
+
+TargetedPurge::purgeAlias($purgeRoot, 'news');
+assertSameValue('alias fallback removes every directory with that name', [
+    'www.example.org/about/index-https.html',
+], $remaining());
+
+TargetedPurge::purgePaths($purgeRoot, ['www.example.org'], ['/']);
+assertSameValue('root path removes the whole host directory', [], $remaining());
+assertSameValue('targeted purge keeps the cache root itself', true, is_dir($purgeRoot));
+TargetedPurge::purgePaths($purgeRoot . '-missing', ['www.example.org'], ['/']);
+DirectoryOperations::delete($purgeRoot);
+
+$adminPage = '<body><div class="header-items d-flex ms-auto"></div></body>';
+$withButton = AdminPurgeButton::inject($adminPage, 'tok3n', '/administrator/index.php', ['Snippet "outdated"']);
+assertSameValue('purge button adds header and floating actions', 2, substr_count($withButton, 'name="tok3n" value="1"'));
+assertSameValue('purge button escapes warnings', true, str_contains($withButton, 'Snippet &quot;outdated&quot;'));
+assertSameValue('purge button is injected once', $withButton, AdminPurgeButton::inject($withButton, 'tok3n', '/administrator/index.php', []));
+assertSameValue('purge button falls back to the floating action without a header', 1,
+    substr_count(AdminPurgeButton::inject('<body></body>', 'tok3n', '/administrator/index.php', []), 'name="tok3n" value="1"'));
 
 echo "\nHelper tests: " . $assertions . " assertions\n";
 
