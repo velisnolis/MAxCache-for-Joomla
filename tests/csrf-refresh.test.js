@@ -15,7 +15,7 @@ const source = fs.readFileSync(
 const endpoint = '/index.php?option=com_ajax&plugin=maxcachefragment&format=raw&maxcache_task=token';
 
 // A form double: one token placeholder unless `placeholders` says otherwise.
-function fakeForm(placeholders = 1, action = '/contact') {
+function fakeForm(placeholders = 1, action = '/contact', method = 'POST') {
   const inputs = Array.from({length: placeholders}, () => ({
     name: '',
     value: '',
@@ -28,7 +28,7 @@ function fakeForm(placeholders = 1, action = '/contact') {
   }));
   const form = {
     inputs,
-    getAttribute: (name) => (name === 'action' ? action : null),
+    getAttribute: (name) => ({action, method}[name] ?? null),
     nativeSubmits: 0,
     requestSubmits: [],
     querySelector: () => inputs.find((input) => input.pending) || null,
@@ -45,7 +45,7 @@ function fakeForm(placeholders = 1, action = '/contact') {
   return form;
 }
 
-function setup({token = '', responses = [], forms = []} = {}) {
+function setup({token = '', responses = [], forms = [], controls = [], baseURI = 'https://www.example.org/contact'} = {}) {
   const options = {'csrf.token': token};
   const sent = [];
   const fetches = [];
@@ -72,7 +72,10 @@ function setup({token = '', responses = [], forms = []} = {}) {
       addEventListener(type, handler) {
         (listeners[type] = listeners[type] || []).push(handler);
       },
-      querySelectorAll: () => forms.flatMap((form) => form.querySelectorAll())
+      baseURI,
+      querySelectorAll: (selector) => (selector.includes('formaction')
+        ? controls
+        : forms.flatMap((form) => form.querySelectorAll()))
     },
     fetch(url, init) {
       fetches.push({url, init});
@@ -283,6 +286,64 @@ test('a form that posts to another site never receives the token', async () => {
   assert.equal(local.inputs[0].name, fresh);
   assert.deepEqual([external.inputs[0].name, schemeless.inputs[0].name], ['', '']);
   assert.deepEqual([external.inputs[0].pending, schemeless.inputs[0].pending], [true, true]);
+});
+
+const control = (form, attributes) => ({
+  form,
+  hasAttribute: (name) => name in attributes,
+  getAttribute: (name) => attributes[name] ?? null
+});
+
+test('a button that redirects or downgrades the submission blocks the token', async () => {
+  for (const attributes of [{formaction: 'https://evil.example/x'}, {formmethod: 'get'}]) {
+    const form = fakeForm();
+    const {dispatch, fetches} = setup({forms: [form], controls: [control(form, attributes)]});
+    dispatch('focusin', {target: {form}});
+    await settle();
+    assert.equal(fetches.length, 0);
+    assert.equal(form.inputs[0].name, '');
+  }
+
+  const safe = fakeForm();
+  const other = fakeForm();
+  const {dispatch} = setup({
+    forms: [safe, other],
+    controls: [control(safe, {formaction: '/contact?step=2', formmethod: 'POST'}), control(other, {formaction: 'https://evil.example/x'})],
+    responses: [{status: 200, body: {token: fresh}}]
+  });
+  dispatch('focusin', {target: {form: safe}});
+  await settle();
+  assert.equal(safe.inputs[0].name, fresh);
+  assert.equal(other.inputs[0].name, '');
+});
+
+test('GET forms and an injected cross-origin base never receive the token', async () => {
+  const getForm = fakeForm(1, '/search', 'get');
+  const first = setup({forms: [getForm]});
+  first.dispatch('focusin', {target: {form: getForm}});
+  await settle();
+  assert.equal(first.fetches.length, 0);
+
+  const form = fakeForm(1, 'contact');
+  const second = setup({forms: [form], baseURI: 'https://evil.example/'});
+  second.dispatch('focusin', {target: {form}});
+  await settle();
+  assert.equal(second.fetches.length, 0);
+  assert.equal(form.inputs[0].name, '');
+});
+
+test('a token is withdrawn if the form becomes unsafe before it is sent', async () => {
+  const form = fakeForm();
+  const controls = [];
+  const {dispatch} = setup({forms: [form], controls, responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('focusin', {target: {form}});
+  await settle();
+  assert.equal(form.inputs[0].name, fresh);
+  controls.push(control(form, {formaction: 'https://evil.example/x'}));
+  const event = submitEvent(form, controls[0]);
+  dispatch('submit', event);
+  assert.deepEqual([form.inputs[0].name, form.inputs[0].value], ['', '']);
+  assert.equal(event.prevented, false);
 });
 
 test('pages without core.js still get form tokens', async () => {

@@ -22,21 +22,63 @@
     return option || fetched;
   };
 
-  // The token only goes into forms that post back to this site. A placeholder in a
-  // form with an external action, or outside any form, stays empty: markup injected
-  // into a page must not be able to send a visitor's token elsewhere.
-  const postsToThisSite = (form) => {
-    if (!form) {
-      return false;
-    }
-
+  // The token only goes into forms that POST back to this site, whatever control
+  // submits them. A placeholder outside a form, in a GET form, or in a form whose
+  // action or any button's formaction leaves the site stays empty: markup injected
+  // into a page must not be able to send a visitor's token elsewhere. Attributes are
+  // read directly, since form.action can be shadowed by a control named "action",
+  // and URLs resolve against the document base, as the browser does on submit.
+  const sameOrigin = (url) => {
     try {
-      const action = typeof form.getAttribute === 'function' ? form.getAttribute('action') || '' : '';
-
-      return new URL(action, window.location.href).origin === window.location.origin;
+      return new URL(url, document.baseURI || window.location.href).origin === window.location.origin;
     } catch (error) {
       return false;
     }
+  };
+
+  const isPost = (value) => String(value || '').trim().toLowerCase() === 'post';
+
+  const postsToThisSite = (form) => {
+    if (!form || typeof form.getAttribute !== 'function') {
+      return false;
+    }
+
+    if (!isPost(form.getAttribute('method')) || !sameOrigin(form.getAttribute('action') || '')) {
+      return false;
+    }
+
+    const overrides = typeof document.querySelectorAll === 'function'
+      ? document.querySelectorAll('[formaction], [formmethod]')
+      : [];
+
+    for (const control of overrides) {
+      if (control.form !== form) {
+        continue;
+      }
+
+      if (control.hasAttribute('formaction') && !sameOrigin(control.getAttribute('formaction') || '')) {
+        return false;
+      }
+
+      if (control.hasAttribute('formmethod') && !isPost(control.getAttribute('formmethod'))) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const filled = [];
+
+  // Take the token back out of a form that stopped being safe after it was filled,
+  // for example because a button with an external formaction was added later.
+  const withdrawFrom = (form) => {
+    filled.forEach((input) => {
+      if (input.form === form) {
+        input.name = '';
+        input.value = '';
+      }
+    });
   };
 
   // Turn the stored placeholders into the input Joomla expects: name=<token>, value=1.
@@ -53,6 +95,7 @@
       input.name = token;
       input.value = '1';
       input.removeAttribute('data-maxcache-form-token');
+      filled.push(input);
     });
   };
 
@@ -177,6 +220,12 @@
   document.addEventListener('submit', (event) => {
     const form = event.target;
 
+    if (!postsToThisSite(form)) {
+      withdrawFrom(form);
+
+      return;
+    }
+
     if (endpoint === '' || !needsToken(form)) {
       return;
     }
@@ -204,6 +253,12 @@
     const nativeSubmit = window.HTMLFormElement.prototype.submit;
 
     window.HTMLFormElement.prototype.submit = function () {
+      if (!postsToThisSite(this)) {
+        withdrawFrom(this);
+
+        return nativeSubmit.call(this);
+      }
+
       if (endpoint === '' || !needsToken(this)) {
         return nativeSubmit.call(this);
       }
