@@ -258,29 +258,31 @@
       ? native.apply(form, parameters)
       : form.requestSubmit(...parameters));
 
-    // Joomla.submitform() clicks a temporary button and removes it at once, so the
-    // original submitter may be gone by now. Send without it, keeping its request to
-    // skip validation.
-    if (submitter && submitter.form === form) {
-      call(submitter);
+    if (!submitter || submitter.form === form) {
+      call(...(submitter ? [submitter] : []));
 
       return;
     }
 
-    const skipValidation = !!submitter && attribute(submitter, 'formnovalidate') !== null
-      && attribute(form, 'novalidate') === null;
+    // The submitter left the form while the token was fetched: Joomla.submitform()
+    // clicks a temporary button and removes it at once. Send with a hidden copy,
+    // which carries its name, value and form* attributes. The formdata check below
+    // still sees the copy, so an off-site formaction loses the token.
+    let stand = null;
 
-    const elementPrototype = window.Element && window.Element.prototype;
-
-    if (skipValidation && elementPrototype) {
-      elementPrototype.setAttribute.call(form, 'novalidate', '');
+    try {
+      stand = submitter.cloneNode(false);
+      stand.hidden = true;
+      form.appendChild(stand);
+    } catch (error) {
+      stand = null;
     }
 
     try {
-      call();
+      call(...(stand && stand.form === form ? [stand] : []));
     } finally {
-      if (skipValidation && elementPrototype) {
-        elementPrototype.removeAttribute.call(form, 'novalidate');
+      if (stand && stand.parentNode) {
+        stand.parentNode.removeChild(stand);
       }
     }
   };

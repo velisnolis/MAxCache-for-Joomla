@@ -288,15 +288,41 @@ test('a second attempt while the token is on its way is not sent twice', async (
   assert.equal(form.nativeSubmits, 0);
 });
 
-test('a submitter removed from the form does not block the submission', async () => {
+test('a submitter removed from the form is replaced by a copy', async () => {
   // Joomla.submitform() clicks a temporary button and removes it immediately.
   const form = fakeForm();
-  const gone = {form: null, getAttribute: () => null};
+  const copies = [];
+  form.appendChild = (node) => {
+    node.form = form;
+    node.parentNode = {removeChild: (child) => { child.form = null; child.parentNode = null; }};
+  };
+  const gone = {
+    form: null,
+    name: 'task',
+    value: 'save',
+    cloneNode() {
+      const copy = {name: this.name, value: this.value, form: null, parentNode: null};
+      copies.push(copy);
+
+      return copy;
+    }
+  };
   const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
   dispatch('submit', submitEvent(form, gone));
   await settle();
-  assert.deepEqual(form.requestSubmits, [[]]);
+  assert.equal(form.requestSubmits.length, 1);
+  assert.equal(form.requestSubmits[0][0], copies[0]);
+  assert.deepEqual([copies[0].name, copies[0].value, copies[0].hidden], ['task', 'save', true]);
+  assert.equal(copies[0].parentNode, null);
   assert.equal(form.inputs[0].name, fresh);
+});
+
+test('a removed submitter that cannot be copied still lets the form go', async () => {
+  const form = fakeForm();
+  const {dispatch} = setup({forms: [form], responses: [{status: 200, body: {token: fresh}}]});
+  dispatch('submit', submitEvent(form, {form: null}));
+  await settle();
+  assert.deepEqual(form.requestSubmits, [[]]);
 });
 
 test('a failing requestSubmit falls back to submit and does not stay confirmed', async () => {

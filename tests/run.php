@@ -735,6 +735,21 @@ assertSameValue('deferFormTokens reads entity-encoded names', '<input type="hidd
 assertSameValue('deferFormTokens refuses an entity-encoded copy elsewhere', null, ResponseSafety::deferFormTokens(
     '<input type="hidden" name="' . $deferToken . '" value="1"><a href="/x?&#97;' . substr($deferToken, 1) . '=1">x</a>'
 ));
+assertSameValue('deferFormTokens refuses a numeric reference without a semicolon', null, ResponseSafety::deferFormTokens(
+    '<input type="hidden" name="' . $deferToken . '" value="1"><a href="/x?&#97' . substr($deferToken, 1) . '=1">x</a>'
+));
+assertSameValue('deferFormTokens reads names with unterminated numeric references', '<input type="hidden" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" name="&#97' . substr($deferToken, 1) . '" value="1">'));
+$greedy = '<input type="hidden" name="&#x61' . substr($deferToken, 1) . '" value="1">';
+assertSameValue('deferFormTokens reads a hex reference to its last digit, as a browser does', $greedy,
+    ResponseSafety::deferFormTokens($greedy));
+assertSameValue('deferFormTokens keeps an empty form attribute', '<input type="hidden" form="" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens accepts a self-closing token input', '<input type="hidden" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" name="' . $deferToken . '" value="1"/>'));
+$slashValue = '<input type=hidden name=' . $deferToken . ' value=1/>';
+assertSameValue('deferFormTokens leaves an unquoted value ending in a slash', [$slashValue, 0],
+    [ResponseSafety::deferFormTokens($slashValue, $deferCount), $deferCount]);
 assertSameValue('deferFormTokens refuses a second copy it cannot replace', null, ResponseSafety::deferFormTokens(
     '<input type="hidden" name="' . $deferToken . '" value="1"><input type="text" name="' . $deferToken . '" value="1">'
 ));

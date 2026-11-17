@@ -88,7 +88,8 @@ final class ResponseSafety
 
                 ++$count;
                 $tokens[strtolower($attributes['name'])] = true;
-                $owner = isset($attributes['form']) && $attributes['form'] !== ''
+                // An empty form="" means "no owner" and must stay that way.
+                $owner = isset($attributes['form'])
                     ? ' form="' . htmlspecialchars($attributes['form'], ENT_QUOTES, 'UTF-8') . '"'
                     : '';
 
@@ -101,7 +102,7 @@ final class ResponseSafety
             return null;
         }
 
-        $decoded = html_entity_decode($deferred, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $decoded = self::decodeEntities($deferred);
 
         foreach (array_keys($tokens) as $token) {
             if (stripos($deferred, (string) $token) !== false || stripos($decoded, (string) $token) !== false) {
@@ -121,7 +122,10 @@ final class ResponseSafety
     private static function parseAttributes(string $tag): array
     {
         $attributes = [];
-        $inner = (string) preg_replace('/^<[a-z0-9]+|\/?>$/i', '', $tag);
+        $inner = substr((string) preg_replace('/^<[a-z0-9]+/i', '', $tag), 0, -1);
+        // A trailing slash closes the tag only after whitespace or a quote;
+        // in value=1/ it belongs to the value.
+        $inner = (string) preg_replace('/(^|[\s"\'])\/\s*$/', '$1', $inner);
 
         preg_match_all(
             '/([^\s"\'=<>\/]+)(?:\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+)))?/',
@@ -145,10 +149,40 @@ final class ResponseSafety
                 $value = $match[4];
             }
 
-            $attributes[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $attributes[$name] = self::decodeEntities($value);
         }
 
         return $attributes;
+    }
+
+    /**
+     * Character references as a browser reads them: numeric ones also count
+     * without their closing semicolon, which html_entity_decode() leaves alone.
+     */
+    private static function decodeEntities(string $text): string
+    {
+        $text = (string) preg_replace_callback(
+            '/&#(?:x([0-9a-f]+)|([0-9]+));?/i',
+            static function (array $match): string {
+                // Like the HTML parser, take every digit; an out-of-range number
+                // becomes the replacement character, not a shorter reference.
+                $digits = ($match[1] ?? '') !== '' ? ltrim($match[1], '0') : ltrim((string) $match[2], '0');
+                $isHex = ($match[1] ?? '') !== '';
+
+                if ($digits === '' || \strlen($digits) > ($isHex ? 6 : 7)) {
+                    return "\u{FFFD}";
+                }
+
+                $code = $isHex ? hexdec($digits) : (int) $digits;
+
+                return $code <= 0x10FFFF && ($code < 0xD800 || $code > 0xDFFF)
+                    ? (string) mb_chr((int) $code, 'UTF-8')
+                    : "\u{FFFD}";
+            },
+            $text
+        );
+
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     public static function containsScriptOptionToken(string $html): bool
