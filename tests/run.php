@@ -681,6 +681,21 @@ assertSameValue('purge button is injected once', $withButton, AdminPurgeButton::
 assertSameValue('purge button falls back to the floating action without a header', 1,
     substr_count(AdminPurgeButton::inject('<body></body>', 'tok3n', '/administrator/index.php', []), 'name="tok3n" value="1"'));
 
+// Every translation carries exactly the keys of its en-GB file, and is listed in the manifest.
+foreach (glob(__DIR__ . '/../pkg_maxcache/packages/*/language/en-GB/*.ini') as $englishFile) {
+    $keysOf = static fn (string $file): array => array_keys((array) parse_ini_file($file, false, INI_SCANNER_RAW));
+    $packageDir = \dirname($englishFile, 3);
+    $manifests = implode('', array_map('file_get_contents', glob($packageDir . '/*.xml')));
+
+    foreach (['ca-ES', 'es-ES'] as $tag) {
+        $translated = str_replace('/en-GB/', '/' . $tag . '/', $englishFile);
+        $label = $tag . '/' . basename($englishFile);
+        assertSameValue($label . ' has the en-GB keys', $keysOf($englishFile), is_file($translated) ? $keysOf($translated) : null);
+        assertSameValue($label . ' is listed in the manifest', true,
+            str_contains($manifests, 'language/' . $tag . '/' . basename($englishFile)));
+    }
+}
+
 echo "\nHelper tests: " . $assertions . " assertions\n";
 
 if ($failures !== []) {

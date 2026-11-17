@@ -7,6 +7,8 @@ GitHub release with the installable ZIP.
 
 - `maxcache:warm` requests the published top-level menu items as a guest so their
   pages are stored again after a purge. See [Warm-up](README.md#warm-up).
+- Catalan (`ca-ES`) and Spanish (`es-ES`) translations of the settings form and
+  extension names. Status panels and administrator messages remain in English.
 
 ## 0.1.42
 
