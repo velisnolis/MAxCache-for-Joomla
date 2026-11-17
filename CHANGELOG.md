@@ -7,6 +7,13 @@ GitHub release with the installable ZIP.
 
 - `maxcache:warm` requests the published top-level menu items as a guest so their
   pages are stored again after a purge. See [Warm-up](README.md#warm-up).
+- Pagecache plugins are asked again after the page is rendered. RSForm! Pro's
+  exclusion listener only answers once a form has been displayed, so it never
+  reached MAxCache, and a form page was stored when RSForm's CSRF option was off.
+  Such pages are now rejected with `pagecache-plugin`.
+- The "should be the last enabled system plugin" warning on the plugin edit page
+  was never shown, because it compared against a property Joomla plugins do not
+  have.
 - Catalan (`ca-ES`) and Spanish (`es-ES`) translations of the settings form and
   extension names. Status panels and administrator messages remain in English.
 

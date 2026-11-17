@@ -383,6 +383,47 @@ $event = new \Joomla\Event\Event('onMaxcachePurgeAll', ['result' => null]);
 pluginFor($app, ['cache_root' => '/'])->onMaxcachePurgeAll($event);
 check('purge event refuses an unsafe cache root', 'unsafe_root', $event->getArgument('result')['skipped'] ?? null);
 
+
+function pendingHeader(Application $app, string $name): string
+{
+    $value = '';
+    foreach ($app->headers as $header) {
+        if (strcasecmp((string) $header['name'], $name) === 0) {
+            $value = (string) $header['value'];
+        }
+    }
+    return $value;
+}
+
+// A pagecache listener that only knows its answer after rendering (RSForm! Pro sets
+// a flag when it displays a form) must still keep the page out of the static cache.
+$lateArtifact = JPATH_ROOT . '/maxcache/example.test/contact/index-https.html';
+DirectoryOperations::ensure(\dirname($lateArtifact));
+AtomicFileWriter::write($lateArtifact, 'older copy of the form page');
+Uri::$request = 'https://example.test/contact';
+$app = new Application('site', new Input([], 'https://example.test/contact'), new Identity());
+$app->body = '<html><head></head><body><form>late form</form></body></html>';
+$app->allowCache(false);
+$latePlugin = pluginFor($app);
+$lateDispatcher = new class {
+    public bool $formShown = false;
+    public function dispatch(string $name, object $event): object
+    {
+        if ($name === 'onPageCacheIsExcluded') {
+            $event->setArgument('result', [$this->formShown]);
+        }
+        return $event;
+    }
+};
+$latePlugin->setDispatcher($lateDispatcher);
+$latePlugin->onAfterRoute(new AfterRouteEvent('onAfterRoute', ['subject' => $app]));
+check('late pagecache exclusion: still eligible after routing', 'eligible', pendingHeader($app, 'X-MAxCache-State'));
+$lateDispatcher->formShown = true;
+$latePlugin->onAfterRender(new AfterRenderEvent('onAfterRender', ['subject' => $app]));
+$latePlugin->onBeforeRespond(new BeforeRespondEvent('onBeforeRespond', ['subject' => $app]));
+check('late pagecache exclusion rejects the rendered page', 'pagecache-plugin', pendingHeader($app, 'X-MAxCache-Reason'));
+check('late pagecache exclusion removes the older artifact', false, is_file($lateArtifact));
+
 echo 'Runtime tests: ' . $assertions . " assertions\n";
 if ($failures !== []) {
     fwrite(STDERR, implode("\n", $failures) . "\n");

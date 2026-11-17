@@ -82,6 +82,8 @@ canonical uncompressed HTML body.
 
 5. `onBeforeRespond`
 Recheck guest/message state and the actual HTTP response status before writing.
+Ask the `pagecache` plugins a second time: some, like RSForm! Pro's, only know
+the page must be excluded after it has been rendered.
 Reject explicit `private`/`no-store` response directives or HTML containing a
 Joomla form token; send privacy/bypass headers and remove both older plain/gzip
 artifacts. Otherwise write the rendered HTML to the deterministic target path and
