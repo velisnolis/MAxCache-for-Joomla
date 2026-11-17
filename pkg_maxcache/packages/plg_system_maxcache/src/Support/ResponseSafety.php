@@ -156,18 +156,25 @@ final class ResponseSafety
     }
 
     /**
-     * Character references as a browser reads them: numeric ones also count
-     * without their closing semicolon, which html_entity_decode() leaves alone.
+     * Character references as a browser reads them, in one pass so that decoded
+     * text is never read as a reference again ("&#38;copy;" is "&copy;", not "©").
+     * Numeric ones also count without their closing semicolon, which
+     * html_entity_decode() leaves alone.
      */
     private static function decodeEntities(string $text): string
     {
-        $text = (string) preg_replace_callback(
-            '/&#(?:x([0-9a-f]+)|([0-9]+));?/i',
+        return (string) preg_replace_callback(
+            '/&(?:#x([0-9a-f]+)|#([0-9]+)|[a-z][a-z0-9]*);?/i',
             static function (array $match): string {
+                $isHex = ($match[1] ?? '') !== '';
+
+                if (!$isHex && ($match[2] ?? '') === '') {
+                    return html_entity_decode($match[0], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+
                 // Like the HTML parser, take every digit; an out-of-range number
                 // becomes the replacement character, not a shorter reference.
-                $digits = ($match[1] ?? '') !== '' ? ltrim($match[1], '0') : ltrim((string) $match[2], '0');
-                $isHex = ($match[1] ?? '') !== '';
+                $digits = ltrim($isHex ? $match[1] : (string) $match[2], '0');
 
                 if ($digits === '' || \strlen($digits) > ($isHex ? 6 : 7)) {
                     return "\u{FFFD}";
@@ -181,8 +188,6 @@ final class ResponseSafety
             },
             $text
         );
-
-        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     public static function containsScriptOptionToken(string $html): bool

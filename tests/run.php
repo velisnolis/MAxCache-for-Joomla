@@ -745,6 +745,12 @@ assertSameValue('deferFormTokens reads a hex reference to its last digit, as a b
     ResponseSafety::deferFormTokens($greedy));
 assertSameValue('deferFormTokens keeps an empty form attribute', '<input type="hidden" form="" data-maxcache-form-token>',
     ResponseSafety::deferFormTokens('<input type="hidden" form="" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens decodes a form owner once, not twice',
+    '<input type="hidden" form="&amp;copy;" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="&#38;copy;" name="' . $deferToken . '" value="1">'));
+assertSameValue('deferFormTokens still decodes named references in attributes',
+    '<input type="hidden" form="a&amp;b&quot;c" data-maxcache-form-token>',
+    ResponseSafety::deferFormTokens('<input type="hidden" form="a&amp;b&quot;c" name="' . $deferToken . '" value="1">'));
 assertSameValue('deferFormTokens accepts a self-closing token input', '<input type="hidden" data-maxcache-form-token>',
     ResponseSafety::deferFormTokens('<input type="hidden" name="' . $deferToken . '" value="1"/>'));
 $slashValue = '<input type=hidden name=' . $deferToken . ' value=1/>';
