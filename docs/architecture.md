@@ -10,19 +10,19 @@ That works for Joomla-managed response caching, but not for MAx Cache, because
 
 ## Reused from core plugin UX
 
-The new plugin should preserve the same admin ergonomics as `System - Cache`:
+The plugin keeps the admin ergonomics of `System - Cache`:
 
 - enable / disable as a normal `system` plugin
 - `browsercache`
 - `exclude_menu_items`
 - `exclude`
 
-These three fields map directly to the current Joomla administrator experience.
+These three fields map directly to the Joomla administrator experience, and the
+exclusions already saved in `System - Cache` are applied as well.
 
-The plugin should also reuse the existing `pagecache` plugin ecosystem where possible.
-That matters for sites already relying on plugins like RSForm's page cache exclusion
-listener, because the MAx Cache pipeline can import the same `pagecache` listeners
-and honour their exclusion decisions.
+The plugin also imports the existing `pagecache` plugins and honours their exclusion
+decisions and cache-key variants. That matters for sites relying on plugins like
+RSForm's page cache exclusion listener.
 
 ## New MAx Cache fields
 
@@ -90,8 +90,10 @@ must precede sending the response. Joomla's generic browser-cache headers are
 added later by `respond()` and do not determine static write eligibility.
 
 6. Purge hooks
-Listen to content, category, menu, module, and plugin lifecycle events to invalidate
-either the full tree or the affected URLs.
+Article and menu item save, state change and delete invalidate the affected URLs
+(`targeted`) or the whole tree (`full`). Category and module changes have no hook of
+their own yet. Saving the plugin's own settings cleans Joomla's caches but does not
+purge static files.
 
 ## Server role split
 
@@ -108,18 +110,17 @@ Server responsibilities:
 - serve the static file before PHP when present
 - bypass when cookies/query-string rules say so
 
-The plugin may eventually offer an explicit "apply snippet" action, but it should not
-silently rewrite `.htaccess` by default. Many Joomla sites already delegate `.htaccess`
-management to tooling such as Akeeba Admin Tools, so automatic writes must remain opt-in.
+The plugin never rewrites `.htaccess` on save. Many Joomla sites delegate `.htaccess`
+management to tooling such as Akeeba Admin Tools, so writes stay opt-in.
 
-Recommended admin flow:
+Admin flow:
 
 - `Save without applying`: persist plugin settings only
 - `Preview snippet`: show the exact managed block
 - `Apply snippet`: explicit action only, always with confirmation and backup
 
-The plugin should track whether the currently applied managed block hash matches the
-newly generated snippet hash, so the admin UI can display:
+The plugin compares the applied managed block hash with the newly generated snippet
+hash, so the admin UI and `maxcache:status` report:
 
 - snippet not applied
 - snippet applied
@@ -133,20 +134,8 @@ newly generated snippet hash, so the admin UI can display:
 - `pkg_maxcache/packages/plg_console_maxcache/`: Joomla console companion
 - `updates/pkg_maxcache.xml`: Joomla update feed
 
-## Recommended MVP
+## Not implemented
 
-Phase 1:
-
-- guest-only caching
-- language-aware paths
-- URL/menu exclusions
-- bypass on session and form cookies
-- HTML output only
-- manual full purge and targeted purge on article save
-
-Phase 2:
-
-- gzip artifact generation
-- mobile variation
-- richer purge graph for menus/modules/categories
-- generated server config preview in plugin help text
+- query-specific cache keys: requests with a query string are never stored
+- purge graph for categories, blogs and modules that list a changed article
+- cache warm-up after a purge

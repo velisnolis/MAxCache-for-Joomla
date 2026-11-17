@@ -18,215 +18,44 @@ Joomla auto-updates.
 
 ## Current Scope
 
-The plugin currently includes:
+- Joomla-native cache plugin style configuration UI, compatible with Joomla 5 and 6
+- guest HTML request eligibility checks, rechecked against the final response
+- exclusions by menu item, URL pattern, pagecache listener, cookies, and query params,
+  including the exclusions saved in Joomla's `System - Cache`
+- deterministic static cache paths, with language and optional mobile variants
+- optional gzip artifacts
+- targeted purge on article and menu item save, state change and delete; full purge
+  from the administrator, the console, a schedule, or another extension
+- generated Apache / `mod_maxcache` snippet with preview, status detection and an
+  explicit `Apply snippet` action with backup, also through Akeeba Admin Tools
+- dynamic module fragments and on-demand CSRF tokens for cached pages
+- console commands for status, diagnosis and purge
 
-- Joomla-native cache plugin style configuration UI
-- guest HTML request eligibility checks
-- exclusions by menu item, URL pattern, pagecache listener, cookies, and query params
-- deterministic static cache path generation
-- optional gzip artifact writing
-- targeted/full purge scaffolding
-- `.htaccess` status detection
-- snippet preview
-- explicit `Apply snippet` action with backup support
+Known limits:
 
-## New in 0.1.42
+- Requests with a query string are never stored; see
+  [Runtime Safeguards](#runtime-safeguards).
+- Targeted purge covers the changed article and the menu items that link to it.
+  Category, blog and module listings that show the article keep their stored copy
+  until a full purge.
+- Nothing rebuilds the cache after a purge: the first visitor to each page pays for
+  the full Joomla render.
 
-- Admin Tools status reads saved configuration without loading editor form plugins.
-  Explicit apply/rebuild runs Admin Tools' own validated commands inside the current
-  Joomla administrator request. It no longer starts a separate PHP CLI process,
-  avoiding the JCE Pro 3.0.4 `ConsoleApplication::getDocument()` failure.
-- Admin Tools backups are verified before any configuration change, use distinct
-  names across repeated applies, and the managed block is checked after rebuilding.
-- The server status field uses the saved snippet settings without PHP warnings.
-
-No change to the generated server snippet or cache artifacts. Updating from 0.1.41
-needs no purge. If a previous Admin Tools apply failed, use the explicit Apply
-snippet action after updating.
-
-## New in 0.1.41
-
-- Other extensions can request a full purge (static cache plus Joomla caches) by
-  dispatching `onMaxcachePurgeAll` inside the same Joomla request. The outcome is
-  returned in the event's `result` argument. See
-  [Purging From Another Extension](#purging-from-another-extension).
-
-No change to the server snippet, cache layout or stored pages: updating from
-0.1.40 needs no snippet reapply or purge.
-
-## New in 0.1.40
-
-- Public cache directories are created with `0755`, including under a restrictive
-  PHP umask, so Apache can read artifacts when it runs as a different Unix user.
-- Shared artifacts no longer retain a visitor's `csrf.token`. The browser obtains
-  its own token on demand; pages are not stored when the refresh loader is unavailable.
-- Admin actions enforce Joomla ACLs as well as CSRF validation. The final response
-  is checked before sending; private responses, errors and hidden-token forms
-  remove matching older plain/gzip artifacts.
-- Session-cookie exclusions, anchored URL patterns, gzip MIME declarations and
-  snippet hashes are consistent across the administrator, frontend and CLI.
-- Optional tracking query parameters serve the canonical cached page. All queries
-  continue to bypass static writes, preserving the canonical artifact.
-- Route reports identify incomplete token probes and correctly accept routes
-  rendered and stored live after a purge.
-
-After updating, review existing cache directory permissions, review/reapply the
-server snippet, and purge/regenerate old artifacts with a verified backup and
-pre/post route checks. Installing the package alone does not repair previously
-stored pages or existing directory permissions.
-
-## New in 0.1.39
-
-- Joomla 6 filesystem compatibility:
-  - replaces runtime uses of the removed `Joomla\CMS\Filesystem\Folder` class
-    with dependency-free directory operations
-  - restores automatic creation of `.htaccess` and Admin Tools backup
-    directories when they do not exist yet
-  - keeps cache artifact creation and targeted directory purges operational
-    after a Joomla 5.4 to 6 migration
-- Adds regression coverage for nested directory creation, discovery, and
-  recursive deletion without Joomla legacy filesystem classes.
-
-## New in 0.1.38
-
-- Dynamic Joomla module fragments:
-  - `MAxCache Dynamic Fragment` outputs a cache-safe placeholder instead of
-    executing the selected source module inside the static page shell
-  - the signed `com_ajax` request renders only the source module configured by
-    a published and accessible fragment instance
-  - `visible`, `immediate`, and manual loading triggers support login modals,
-    mobile dialogs, and inline dynamic blocks
-- Response safety:
-  - static writes are rejected with `csrf-token-in-response` when the final HTML
-    contains a Joomla form token
-  - an unsafe response removes the matching old plain/gzip artifacts instead of
-    leaving stale token-bearing HTML available
-  - console status/diagnosis reports `csrf-token-in-cache` with bounded samples
-    when existing static artifacts contain Joomla form tokens
-
-See [Dynamic module fragments](docs/dynamic-fragments.md) for the setup pattern
-used with login modules, Modules Anywhere, and Conditional Content.
-
-## New in 0.1.37
-
-- Refreshes Joomla's `com_plugins` metadata cache after package install/update,
-  so newly enabled `maxcache:*` console commands are available immediately.
-- `maxcache:status` and `maxcache:diagnose` now compare the applied `.htaccess`
-  snippet hash with the current effective configuration and report
-  `applied`, `outdated`, or `not_applied`.
-- Keeps server configuration changes explicit: diagnosis reports drift but never
-  rewrites `.htaccess`.
-
-## New in 0.1.36
-
-- Joomla console operations:
-  - `maxcache:status` reports the installed version, effective safeguards, cache root, artifact counts, and server integration
-  - `maxcache:diagnose` reports configuration errors and warnings, with JSON and strict modes for automation
-  - `maxcache:purge` is a dry run unless the operator passes `--confirm`
-- shared purge safety:
-  - administrator and console purges use the same cache-root validation and filesystem operation
-- automation-safe route diagnostics:
-  - report redirect targets in a `location` column
-  - `--fail-on-risk` returns exit code 1 when the final phase is not conclusively safe
-  - deterministic shell fixtures cover excluded routes, fresh/stale CSRF tokens, redirects, and missing routes
-
-## New in 0.1.35
-
-- route diagnostics verdicts:
-  - add a `verdict` column to `scripts/maxcache-route-report.sh`
-  - flags stale-cache masking, post-purge missing routes, stale CSRF tokens, fresh CSRF tokens, and verified exclusions
-- migration checklist:
-  - document the pre/post purge workflow for Joomla major migrations
-  - include route sets for multilingual roots and `com_users` reset/remind forms
-
-## New in 0.1.34
-
-- safer built-in exclusions:
-  - exclude Joomla `com_users` and `/component/users` routes from runtime writes and generated server snippets
-  - prevents reset/remind/login/profile forms from being cached with stale CSRF tokens
-- route diagnostics:
-  - add `scripts/maxcache-route-report.sh` for migration pre/post purge checks
-  - reports HTTP status, MAxCache debug headers, matching static files, and Joomla-style token changes
-
-## New in 0.1.33
-
-- resolved Joomla session-cookie bypass:
-  - generated Apache and mod_maxcache snippets now also include real session names from Joomla's session services when available
-  - fixes sites where the runtime session cookie differs from the configured `session_name` hash
-
-## New in 0.1.32
-
-- server-side login/session bypass:
-  - generated Apache and mod_maxcache snippets now include Joomla frontend session cookie names derived from the site secret
-  - snippet preview, status checks, and apply actions use the same effective bypass-cookie list
-  - runtime bypass checks use the configured cookies plus Joomla session-cookie candidates
-
-## New in 0.1.31
-
-- prefixed language cache paths:
-  - fixes duplicated language prefixes in generated paths such as `/cat/cat/llet`
-  - shares language-routing detection between runtime and installer recommendations
-  - adds local tests for real `/cat/`, `/esp/`, and `/ca/` URL cases
-- admin and operations:
-  - warns when Joomla `System - Cache` is enabled and can serve pages before MAx Cache
-  - caches the admin snippet-status check briefly to avoid Admin Tools CLI shell-outs on every admin render
-  - requests Joomla cache cleaning when purging MAx Cache or saving MAx Cache configuration
-- invalidation and hardening:
-  - purges stale static files on content/menu state changes and deletes, not only saves
-  - writes static artifacts and managed `.htaccess` changes atomically
-  - reports invalid exclusion regex patterns and skips them at runtime/snippet generation
-
-## New in 0.1.30
-
-- admin purge button:
-  - show the `Purge MAx Cache` action whenever the plugin is active in authenticated admin pages
-  - no longer require the generated server snippet to be applied before exposing the purge action
-  - warn when the server snippet is not applied, outdated, or cannot be verified
-
-## New in 0.1.29
-
-- language-prefixed cache path detection:
-  - detects Joomla language SEF prefixes such as `/ca/`, `/cat/`, and `/esp/`
-  - recommends language-aware cache paths whenever Language Filter exposes a prefix, even with a single published language
-- System Cache exclusion inheritance:
-  - MAx Cache now applies `System - Cache` excluded menu items and URL patterns at runtime
-  - server snippet preview/status/apply use the same effective exclusions
-- admin UX:
-  - inherited `System - Cache` exclusions are shown in the built-in exclusions panel
-  - admin purge button remains hidden on the login screen
-  - admin purge button remains available in tablet/mobile layouts through a floating fallback
-
-## New in 0.1.28
-
-- Admin Tools compatibility fix:
-  - Joomla CLI calls now enable `apc.enable_cli=1` automatically when the site uses `apcu`
-  - this fixes Admin Tools snippet apply/read failures on hosts where APCu is disabled for CLI
-- guest session tracking warning:
-  - adds a prominent warning when Joomla `Guest Session Tracking` is enabled
-  - repeats the warning after `Apply snippet` so guest-cache bypasses are harder to miss
-
-## New in 0.1.27
-
-- full purge automation controls:
-  - regenerate after Joomla save
-  - regenerate on interval
-- direct integration with Regular Labs Cache Cleaner:
-  - save + integrate from the MAx Cache settings page
-  - automatically add `maxcache` to Cache Cleaner custom folders
-  - copy MAx Cache full-regeneration settings into Cache Cleaner
-- more accurate Regular Labs detection:
-  - only reports Cache Cleaner when the extension is actually installed
-- admin form fixes:
-  - fixed broken inline JavaScript in `Site Hosts`
-  - hide full-regeneration controls when purge strategy is `Targeted`
+Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Repository Layout
 
 - `pkg_maxcache/`: Joomla package source
 - `pkg_maxcache/packages/plg_system_maxcache/`: system plugin source
+- `pkg_maxcache/packages/plg_console_maxcache/`: console commands
+- `pkg_maxcache/packages/plg_ajax_maxcachefragment/` and `mod_maxcache_fragment/`:
+  dynamic fragments and token refresh
 - `updates/pkg_maxcache.xml`: Joomla update feed
-- `docker/build-package.sh`: local package build script
+- `docker/build-package.sh`: package build script
+- `scripts/maxcache-route-report.sh`: route diagnostics
+- `tests/`: local tests; `tests/integration/` needs an isolated Joomla 6
 - `docs/architecture.md`: architecture notes
+- `CHANGELOG.md`: release notes
 
 ## Building the Installable Package
 
@@ -241,6 +70,10 @@ Output:
 - `.docker-build/pkg_maxcache-<version>.zip`
 - `.docker-build/pkg_maxcache-lab.zip`
 - `updates/pkg_maxcache.xml`
+
+The build rewrites the update feed with the checksum of the ZIP it has just produced.
+Pass `--no-feed` to build without touching `updates/`, for example to test a
+candidate; CI does the same.
 
 ## Local Tests
 
@@ -258,7 +91,12 @@ safety headers, plain/gzip artifacts, and query requests preserving canonical HT
 When Node is available it also runs `tests/csrf-refresh.test.js`, which tests the
 browser token refresh script against doubles for `core.js` and `fetch`.
 
-## Runtime Safeguards in 0.1.40
+GitHub Actions runs the same checks on every pull request and push to `main`, on
+PHP 8.1 to 8.5, together with a syntax check and a package build
+(`.github/workflows/ci.yml`). The Joomla 6 integration run in `tests/integration/`
+is not part of CI: it needs an isolated Joomla installation.
+
+## Runtime Safeguards
 
 Administrative web actions require a logged-in identity with backend access.
 Purging also requires `core.manage` on `com_cache`; applying server rules or
@@ -390,18 +228,17 @@ release asset URL, and the `sha256` checksum.
 
 The plugin does not auto-write `.htaccess` on normal save.
 
-Intended admin flow:
+Admin flow:
 
 1. Save plugin settings
 2. Preview snippet
 3. Explicitly apply snippet
 
-Each apply action should:
-
-- require confirmation
-- create a timestamped backup
-- mark the applied hash
-- warn when Akeeba Admin Tools markers are detected
+Each apply action requires confirmation, creates a timestamped backup and records
+the applied hash, so the status field can report `applied`, `outdated` or
+`not_applied`. When Akeeba Admin Tools manages `.htaccess`, the block goes into its
+custom footer rules and Admin Tools rebuilds the file; without it, the plugin writes
+its own managed block and warns if Admin Tools markers are present.
 
 ## Cookie Guidance
 
