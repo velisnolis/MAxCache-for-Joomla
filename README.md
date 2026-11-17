@@ -188,10 +188,19 @@ Requirements and limits:
   For RSForm! Pro, disable the `Page Cache - RSForm! Pro` plugin.
 - Purge after changing the setting, and test every form on the site.
 
-Tested on Joomla 6.2 with RSForm! Pro 3.4.6 (single-page and multipage example
-forms, default settings). Not tested: RSForm AJAX validation, its built-in captcha,
-reCAPTCHA, file uploads, forms shown through a module or content plugin, and other
-form extensions.
+Tested on Joomla 6.2 in a real browser, loading the stored page:
+
+| Form | Result |
+| --- | --- |
+| RSForm! Pro 3.4.6, single-page example form | sent, thank-you page |
+| RSForm! Pro 3.4.6, multipage example form | sent, thank-you page |
+| RSForm! Pro built-in captcha field | **fails**: the stored page embeds one visitor's captcha image, so a new visitor's correct answer is rejected once; the page Joomla then renders has their own captcha |
+| Core login module (`mod_login`) inside a cached page | token accepted |
+| Core contact form (`com_contact`) on a menu item | token accepted |
+
+Not tested: reCAPTCHA and hCaptcha, RSForm AJAX validation, RSForm's Hashcash field,
+file uploads, RSForm shown through its module or content plugin, and other form
+extensions.
 
 ## Joomla Console Commands
 
