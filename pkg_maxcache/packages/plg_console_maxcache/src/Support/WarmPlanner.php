@@ -115,7 +115,9 @@ final class WarmPlanner
 
             foreach ($prefixes as $prefix) {
                 if ($isHome) {
-                    $path = $entry . $prefix . '/';
+                    // Without URL rewriting Joomla redirects "/index.php/" to "/index.php";
+                    // the home page visitors reach is "/" or "/index.php/<language>".
+                    $path = $prefix === '' ? '/' : ($entry === '' ? $prefix . '/' : $entry . $prefix);
                 } else {
                     $segments = implode('/', array_map('rawurlencode', explode('/', $menuPath)));
                     $path = $entry . $prefix . '/' . $segments . $suffix;
