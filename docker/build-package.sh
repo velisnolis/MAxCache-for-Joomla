@@ -30,6 +30,12 @@ zip_dir_contents() {
   )
 }
 
+WRITE_FEED=1
+
+if [[ "${1:-}" == "--no-feed" ]]; then
+  WRITE_FEED=0
+fi
+
 require_cmd zip
 
 rm -rf "$STAGE_DIR"
@@ -50,6 +56,11 @@ rm -f "$OUTPUT_ZIP" "$LATEST_ZIP"
 )
 
 cp "$OUTPUT_ZIP" "$LATEST_ZIP"
+
+if [[ "$WRITE_FEED" -eq 0 ]]; then
+  echo "$OUTPUT_ZIP"
+  exit 0
+fi
 
 mkdir -p "$UPDATE_DIR"
 SHA256="$(shasum -a 256 "$OUTPUT_ZIP" | awk '{print $1}')"
