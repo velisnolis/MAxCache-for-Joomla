@@ -190,6 +190,14 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             return;
         }
 
+        // Ask the pagecache plugins again now that the page is rendered. Listeners
+        // such as RSForm! Pro's only know they must exclude the page once their
+        // form has been displayed, which is after onAfterRoute.
+        if ($this->isExcludedByPagecachePlugins()) {
+            $this->rejectResponse('pagecache-plugin');
+            return;
+        }
+
         $body = (string) $app->getBody();
 
         if ($body === '') {
@@ -303,10 +311,6 @@ final class Maxcache extends CMSPlugin implements SubscriberInterface, Dispatche
             || !\in_array($input->getCmd('view'), ['plugin', 'plugins'], true)
             || $input->getInt('extension_id') <= 0
         ) {
-            return;
-        }
-
-        if ($input->getInt('extension_id') !== (int) ($this->_subject->id ?? 0)) {
             return;
         }
 
